@@ -421,3 +421,48 @@ details[open] > summary::before {
   word-break: break-word;
   line-height: 1.55;
 }
+
+.reply-indicator {
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin-bottom: 0.35rem;
+}
+
+.event-actions {
+  display: flex;
+  margin-top: 0.5rem;
+}
+
+.btn-reply {
+  font-size: 0.72rem;
+  padding: 0.2rem 0.55rem;
+  color: var(--muted);
+  background: transparent;
+  border-color: transparent;
+}
+
+.btn-reply:hover {
+  color: var(--text);
+  background: var(--surface2);
+  border-color: var(--border);
+}
+
+.reply-form {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.reply-form-label {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.reply-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}

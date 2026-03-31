@@ -363,12 +363,125 @@ function renderEvent(event) {
 
   meta.append(avatar, authorEl, time);
 
+  // Reply indicator — shown when this event references another event via e tag
+  const eTags = event.tags.filter(t => t[0] === 'e');
+  if (eTags.length > 0) {
+    const refId = eTags[eTags.length - 1][1];
+    const refEvent = store.events.find(e => e.id === refId);
+    const refProfile = refEvent ? store.profiles.get(refEvent.pubkey) : null;
+    const refLabel = refProfile?.name || refProfile?.display_name
+      || (refEvent ? refEvent.pubkey.slice(0, 12) + '…' : refId.slice(0, 12) + '…');
+
+    const replyIndicator = document.createElement('div');
+    replyIndicator.className = 'reply-indicator';
+    replyIndicator.textContent = `↩ ${refLabel}`;
+    card.append(meta, replyIndicator);
+  } else {
+    card.appendChild(meta);
+  }
+
   const content = document.createElement('div');
   content.className = 'event-content';
   content.textContent = event.content; // safe — never innerHTML
 
-  card.append(meta, content);
+  const actions = document.createElement('div');
+  actions.className = 'event-actions';
+
+  const replyBtn = document.createElement('button');
+  replyBtn.className = 'btn-reply';
+  replyBtn.textContent = 'Reply';
+
+  actions.appendChild(replyBtn);
+  card.append(content, actions);
+
+  const replyForm = createReplyForm(event);
+  card.appendChild(replyForm);
+
+  replyBtn.addEventListener('click', () => {
+    replyForm.hidden = !replyForm.hidden;
+    if (!replyForm.hidden) replyForm.querySelector('textarea').focus();
+  });
+
   return card;
+}
+
+function createReplyForm(parentEvent) {
+  const form = document.createElement('div');
+  form.className = 'reply-form';
+  form.hidden = true;
+
+  const profile = store.profiles.get(parentEvent.pubkey);
+  const name = profile?.name || profile?.display_name || (parentEvent.pubkey.slice(0, 12) + '…');
+
+  const label = document.createElement('div');
+  label.className = 'reply-form-label';
+  label.textContent = `Replying to ${name}`;
+
+  const textarea = document.createElement('textarea');
+  textarea.rows = 3;
+  textarea.placeholder = 'Write your reply…';
+
+  const formActions = document.createElement('div');
+  formActions.className = 'reply-form-actions';
+
+  const submitBtn = document.createElement('button');
+  submitBtn.className = 'primary';
+  submitBtn.textContent = 'Reply';
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.textContent = 'Cancel';
+
+  const resultMsg = document.createElement('span');
+  resultMsg.className = 'result-msg';
+
+  formActions.append(submitBtn, cancelBtn, resultMsg);
+  form.append(label, textarea, formActions);
+
+  cancelBtn.addEventListener('click', () => {
+    form.hidden = true;
+    textarea.value = '';
+    resultMsg.textContent = '';
+  });
+
+  submitBtn.addEventListener('click', async () => {
+    if (!store.keys) {
+      resultMsg.textContent = 'No identity.';
+      resultMsg.className = 'result-msg err';
+      return;
+    }
+    if (store.relayStatus !== 'connected') {
+      resultMsg.textContent = 'Not connected.';
+      resultMsg.className = 'result-msg err';
+      return;
+    }
+    const content = textarea.value.trim();
+    if (!content) return;
+
+    submitBtn.disabled = true;
+    resultMsg.textContent = 'Posting…';
+    resultMsg.className = 'result-msg';
+
+    try {
+      const event = createEvent({
+        privkeyHex: store.keys.privkeyHex,
+        pubkeyHex: store.keys.pubkeyHex,
+        kind: 1,
+        tags: [['e', parentEvent.id], ['p', parentEvent.pubkey]],
+        content,
+      });
+      await relay.publish(event);
+      store.addEvent(event);
+      textarea.value = '';
+      form.hidden = true;
+    } catch (err) {
+      resultMsg.textContent = err.message;
+      resultMsg.className = 'result-msg err';
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+
+  return form;
 }
 
 function pubkeyColor(pubkey) {
