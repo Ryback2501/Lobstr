@@ -1,4 +1,4 @@
-import { generateKeypair, importPrivkey, createEvent } from './nostr.js';
+import { generateKeypair, importPrivkey, createEvent, verifyEvent } from './nostr.js';
 import { RelayConnection } from './relay.js';
 import { store } from './store.js';
 
@@ -210,6 +210,7 @@ connectBtn.addEventListener('click', async () => {
 
   relay = new RelayConnection(url, {
     onEvent: (subId, event) => {
+      if (!verifyEvent(event)) return;
       if (event.kind === 0) {
         handleMetadataEvent(event);
         if (subId === ownProfileSubId) populateProfileForm(event.pubkey);
