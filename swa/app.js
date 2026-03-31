@@ -156,6 +156,7 @@ store.on('events', (events) => {
 
 store.on('profiles', () => {
   rerenderFeed();
+  renderFollows(store.follows);
 });
 
 store.on('mentions', (events) => {
@@ -413,20 +414,36 @@ function renderFollowItem(f) {
   const item = document.createElement('div');
   item.className = 'follow-item';
 
+  const profile = store.profiles.get(f.pubkey);
+  const displayName = profile?.name || profile?.display_name || f.petname || (f.pubkey.slice(0, 12) + '…');
+
+  const avatar = document.createElement('div');
+  avatar.className = 'avatar';
+  if (profile?.picture) {
+    const img = document.createElement('img');
+    img.src = profile.picture;
+    img.alt = displayName;
+    img.onerror = () => { img.remove(); avatar.textContent = displayName[0].toUpperCase(); };
+    avatar.appendChild(img);
+  } else {
+    avatar.textContent = displayName[0].toUpperCase();
+    avatar.style.background = pubkeyColor(f.pubkey);
+  }
+
   const info = document.createElement('div');
   info.className = 'follow-info';
 
-  const pubkeyEl = document.createElement('span');
-  pubkeyEl.className = 'follow-pubkey';
-  pubkeyEl.textContent = f.pubkey.slice(0, 12) + '…';
-  pubkeyEl.title = f.pubkey;
-  info.appendChild(pubkeyEl);
+  const nameEl = document.createElement('span');
+  nameEl.className = 'follow-pubkey';
+  nameEl.textContent = displayName;
+  nameEl.title = f.pubkey;
+  info.appendChild(nameEl);
 
-  if (f.petname) {
-    const petnameEl = document.createElement('span');
-    petnameEl.className = 'follow-petname';
-    petnameEl.textContent = f.petname;
-    info.appendChild(petnameEl);
+  if (profile?.about) {
+    const aboutEl = document.createElement('span');
+    aboutEl.className = 'follow-petname';
+    aboutEl.textContent = profile.about;
+    info.appendChild(aboutEl);
   }
 
   const unfollowBtn = document.createElement('button');
@@ -434,7 +451,7 @@ function renderFollowItem(f) {
   unfollowBtn.textContent = 'Unfollow';
   unfollowBtn.addEventListener('click', () => handleUnfollow(f.pubkey));
 
-  item.append(info, unfollowBtn);
+  item.append(avatar, info, unfollowBtn);
   return item;
 }
 
@@ -513,6 +530,8 @@ function handleEOSE(subId) {
   if (subId === followsSubId) {
     if (store.follows.length === 0) {
       followsStatus.textContent = 'Not following anyone yet.';
+    } else {
+      fetchMissingMetadata();
     }
   } else if (subId === feedSubId) {
     if (store.events.length === 0) feedStatus.textContent = 'No events found.';
@@ -713,6 +732,7 @@ function fetchMissingMetadata() {
   const allPubkeys = [
     ...store.events.map(e => e.pubkey),
     ...store.mentions.map(e => e.pubkey),
+    ...store.follows.map(f => f.pubkey),
   ];
   const unknown = [...new Set(allPubkeys)].filter(pk => !store.profiles.has(pk));
   if (!unknown.length) return;
