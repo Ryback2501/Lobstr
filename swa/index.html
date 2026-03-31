@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lobstr — Nostr Client</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <div class="header-text">
+      <h1>Lobstr</h1>
+      <p class="subtitle">A minimal Nostr client</p>
+    </div>
+    <button id="info-btn" class="info-btn" aria-label="About">i</button>
+  </header>
+
+  <div id="info-modal" class="modal-overlay" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <button id="modal-close-btn" class="modal-close" aria-label="Close">&times;</button>
+      <h2 id="modal-title">Lobstr</h2>
+      <p id="modal-version" class="modal-version"></p>
+      <p class="modal-description">A minimal Nostr client running entirely in the browser. No server, no tracking — just you and the relays.</p>
+      <div class="modal-nips">
+        <p class="modal-nips-label">Supported NIPs</p>
+        <div id="modal-nips-list" class="nips-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <main>
+    <section id="keys-panel" class="panel">
+      <h2>Identity</h2>
+
+      <div class="field-group">
+        <label for="pubkey-display">Public key</label>
+        <div class="input-row">
+          <input id="pubkey-display" type="text" readonly placeholder="No identity yet" autocomplete="off">
+          <button id="copy-pubkey-btn" title="Copy public key">Copy</button>
+        </div>
+      </div>
+
+      <details id="privkey-section">
+        <summary>Private key</summary>
+        <div class="field-group" style="margin-top: 0.75rem;">
+          <div class="warning-label">Never share your private key with anyone.</div>
+          <div id="privkey-display-wrapper" hidden>
+            <label>Generated private key (copy and store it safely)</label>
+            <div class="input-row">
+              <input id="privkey-display" type="text" readonly autocomplete="off">
+              <button id="copy-privkey-btn">Copy</button>
+            </div>
+          </div>
+          <div class="input-row" style="margin-top: 0.5rem;">
+            <input id="privkey-import" type="password" placeholder="Paste 64-char hex private key" autocomplete="off">
+            <button id="import-btn">Import</button>
+          </div>
+          <div id="import-error" class="error-msg" hidden></div>
+        </div>
+      </details>
+
+      <div class="btn-row">
+        <button id="generate-btn" class="primary">Generate new keypair</button>
+      </div>
+    </section>
+
+    <section id="relay-panel" class="panel">
+      <h2>Relay</h2>
+      <div class="field-group">
+        <label for="relay-url">Relay URL</label>
+        <div class="input-row">
+          <input id="relay-url" type="text" placeholder="wss://relay.damus.io" autocomplete="off">
+          <button id="connect-btn" class="primary">Connect</button>
+        </div>
+      </div>
+      <div class="status-row">
+        <span id="status-dot" class="dot disconnected"></span>
+        <span id="status-label">Disconnected</span>
+      </div>
+      <div id="relay-notice" class="notice-msg" hidden></div>
+    </section>
+
+    <section id="post-panel" class="panel">
+      <h2>Post</h2>
+      <div class="field-group">
+        <textarea id="post-content" rows="4" placeholder="What's on your mind?" maxlength="2000"></textarea>
+        <div class="char-counter"><span id="char-count">0</span> / 2000</div>
+      </div>
+      <div class="btn-row">
+        <button id="post-btn" class="primary">Post</button>
+        <span id="post-result" class="result-msg"></span>
+      </div>
+    </section>
+
+    <section id="feed-panel" class="panel">
+      <h2>Feed</h2>
+      <div id="feed-status" class="feed-status">Connect to a relay to see events.</div>
+      <div id="events-list"></div>
+    </section>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
