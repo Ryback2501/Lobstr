@@ -207,9 +207,7 @@ feedSinceSelect.addEventListener('change', () => {
 });
 
 feedUntilInput.addEventListener('change', () => {
-  untilFilter = feedUntilInput.value
-    ? Math.floor(new Date(feedUntilInput.value).getTime() / 1000)
-    : 0;
+  untilFilter = parseInt(feedUntilInput.value) || 0;
   if (store.relayStatus === 'connected') subscribeToFeed();
 });
 
@@ -344,7 +342,7 @@ function subscribeToFeed() {
 
   const filter = { kinds: [1], limit: 20 };
   if (sinceFilter > 0) filter.since = Math.floor(Date.now() / 1000) - sinceFilter;
-  if (untilFilter > 0) filter.until = untilFilter;
+  if (untilFilter > 0) filter.until = Math.floor(Date.now() / 1000) - untilFilter;
 
   relay.subscribe(feedSubId, [filter]);
 }

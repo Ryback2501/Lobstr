@@ -121,7 +121,12 @@
           <option value="86400">Last 24h</option>
           <option value="604800">Last week</option>
         </select>
-        <input id="feed-until" type="datetime-local" title="Show events up to this date/time">
+        <select id="feed-until">
+          <option value="0">No end limit</option>
+          <option value="3600">Until 1h ago</option>
+          <option value="86400">Until 1d ago</option>
+          <option value="604800">Until 1w ago</option>
+        </select>
         <div class="input-row" style="flex:1">
           <input id="feed-id-search" type="text" placeholder="Find event by ID (64-char hex)" autocomplete="off">
           <button id="feed-id-search-btn">Find</button>
