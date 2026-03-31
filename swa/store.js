@@ -54,4 +54,11 @@ export const store = {
     this.events = [];
     emit('events', this.events);
   },
+
+  profiles: new Map(), // pubkey → { name, about, picture, _created_at }
+
+  setProfile(pubkey, metadata) {
+    this.profiles.set(pubkey, metadata);
+    emit('profiles', pubkey);
+  },
 };

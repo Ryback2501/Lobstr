@@ -5,7 +5,8 @@ import { store } from './store.js';
 const VERSION = '0.0.1';
 const SUPPORTED_NIPS = ['01'];
 
-// DOM refs
+// ── DOM refs ──────────────────────────────────────────────────────────────────
+
 const pubkeyDisplay = document.getElementById('pubkey-display');
 const privkeyDisplay = document.getElementById('privkey-display');
 const privkeyDisplayWrapper = document.getElementById('privkey-display-wrapper');
@@ -15,6 +16,12 @@ const importError = document.getElementById('import-error');
 const generateBtn = document.getElementById('generate-btn');
 const copyPubkeyBtn = document.getElementById('copy-pubkey-btn');
 const copyPrivkeyBtn = document.getElementById('copy-privkey-btn');
+
+const profileNameInput = document.getElementById('profile-name');
+const profileAboutInput = document.getElementById('profile-about');
+const profilePictureInput = document.getElementById('profile-picture');
+const profileSaveBtn = document.getElementById('profile-save-btn');
+const profileResult = document.getElementById('profile-result');
 
 const relayUrlInput = document.getElementById('relay-url');
 const connectBtn = document.getElementById('connect-btn');
@@ -36,7 +43,12 @@ const modalCloseBtn = document.getElementById('modal-close-btn');
 const modalVersion = document.getElementById('modal-version');
 const modalNipsList = document.getElementById('modal-nips-list');
 
+// ── State ─────────────────────────────────────────────────────────────────────
+
 let relay = null;
+let ownProfileSubId = null;
+let feedSubId = null;
+let metadataSubId = null;
 
 // ── Info modal ────────────────────────────────────────────────────────────────
 
@@ -61,7 +73,7 @@ const savedPrivkey = sessionStorage.getItem('privkeyHex');
 if (savedPrivkey) {
   try {
     const keys = importPrivkey(savedPrivkey);
-    store.keys = keys; // restore quietly, no emit needed yet
+    store.keys = keys;
     pubkeyDisplay.value = keys.pubkeyHex;
   } catch {
     sessionStorage.removeItem('privkeyHex');
@@ -80,13 +92,21 @@ store.on('relayStatus', (status) => {
 
   if (status === 'connected') {
     connectBtn.textContent = 'Disconnect';
-    feedStatus.textContent = 'Loading events…';
     store.clearEvents();
-    const subId = crypto.randomUUID();
-    store.subscriptionId = subId;
-    relay.subscribe(subId, [{ kinds: [1], limit: 20 }]);
+
+    if (store.keys) {
+      ownProfileSubId = crypto.randomUUID();
+      relay.subscribe(ownProfileSubId, [{ kinds: [0], authors: [store.keys.pubkeyHex], limit: 1 }]);
+    }
+
+    feedSubId = crypto.randomUUID();
+    feedStatus.textContent = 'Loading events…';
+    relay.subscribe(feedSubId, [{ kinds: [1], limit: 20 }]);
   } else {
     connectBtn.textContent = 'Connect';
+    ownProfileSubId = null;
+    feedSubId = null;
+    metadataSubId = null;
     if (status === 'disconnected') {
       feedStatus.textContent = 'Connect to a relay to see events.';
     }
@@ -100,6 +120,10 @@ store.on('events', (events) => {
   for (const event of events) {
     eventsList.appendChild(renderEvent(event));
   }
+});
+
+store.on('profiles', () => {
+  rerenderFeed();
 });
 
 // ── Key management ────────────────────────────────────────────────────────────
@@ -130,6 +154,45 @@ importBtn.addEventListener('click', () => {
 copyPubkeyBtn.addEventListener('click', () => copyToClipboard(pubkeyDisplay.value, copyPubkeyBtn));
 copyPrivkeyBtn.addEventListener('click', () => copyToClipboard(privkeyDisplay.value, copyPrivkeyBtn));
 
+// ── Profile ───────────────────────────────────────────────────────────────────
+
+profileSaveBtn.addEventListener('click', async () => {
+  if (!store.keys) {
+    setProfileResult('Generate or import a keypair first.', 'err');
+    return;
+  }
+  if (store.relayStatus !== 'connected') {
+    setProfileResult('Connect to a relay first.', 'err');
+    return;
+  }
+
+  const metadata = {
+    name: profileNameInput.value.trim(),
+    about: profileAboutInput.value.trim(),
+    picture: profilePictureInput.value.trim(),
+  };
+
+  profileSaveBtn.disabled = true;
+  setProfileResult('Saving…', '');
+
+  try {
+    const event = createEvent({
+      privkeyHex: store.keys.privkeyHex,
+      pubkeyHex: store.keys.pubkeyHex,
+      kind: 0,
+      tags: [],
+      content: JSON.stringify(metadata),
+    });
+    await relay.publish(event);
+    store.setProfile(store.keys.pubkeyHex, { ...metadata, _created_at: event.created_at });
+    setProfileResult('Saved.', 'ok');
+  } catch (err) {
+    setProfileResult(err.message, 'err');
+  } finally {
+    profileSaveBtn.disabled = false;
+  }
+});
+
 // ── Relay ─────────────────────────────────────────────────────────────────────
 
 connectBtn.addEventListener('click', async () => {
@@ -146,10 +209,18 @@ connectBtn.addEventListener('click', async () => {
   relayNotice.hidden = true;
 
   relay = new RelayConnection(url, {
-    onEvent: (_subId, event) => store.addEvent(event),
-    onEOSE: (_subId) => {
-      if (store.events.length === 0) {
-        feedStatus.textContent = 'No events found.';
+    onEvent: (subId, event) => {
+      if (event.kind === 0) {
+        handleMetadataEvent(event);
+        if (subId === ownProfileSubId) populateProfileForm(event.pubkey);
+      } else if (subId === feedSubId) {
+        store.addEvent(event);
+      }
+    },
+    onEOSE: (subId) => {
+      if (subId === feedSubId) {
+        if (store.events.length === 0) feedStatus.textContent = 'No events found.';
+        fetchMissingMetadata();
       }
     },
     onNotice: (msg) => {
@@ -209,9 +280,52 @@ postBtn.addEventListener('click', async () => {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+function handleMetadataEvent(event) {
+  try {
+    const metadata = JSON.parse(event.content);
+    const existing = store.profiles.get(event.pubkey);
+    if (!existing || event.created_at > existing._created_at) {
+      store.setProfile(event.pubkey, { ...metadata, _created_at: event.created_at });
+    }
+  } catch {
+    // Ignore invalid JSON in kind-0 content
+  }
+}
+
+function populateProfileForm(pubkey) {
+  const profile = store.profiles.get(pubkey);
+  if (!profile) return;
+  profileNameInput.value = profile.name || profile.display_name || '';
+  profileAboutInput.value = profile.about || '';
+  profilePictureInput.value = profile.picture || '';
+}
+
+function fetchMissingMetadata() {
+  const unknown = [...new Set(store.events.map(e => e.pubkey))]
+    .filter(pk => !store.profiles.has(pk));
+  if (!unknown.length || !relay) return;
+
+  if (metadataSubId) relay.unsubscribe(metadataSubId);
+  metadataSubId = crypto.randomUUID();
+  relay.subscribe(metadataSubId, [{ kinds: [0], authors: unknown }]);
+}
+
+function rerenderFeed() {
+  if (!store.events.length) return;
+  eventsList.innerHTML = '';
+  for (const event of store.events) {
+    eventsList.appendChild(renderEvent(event));
+  }
+}
+
 function setPostResult(msg, cls) {
   postResult.textContent = msg;
   postResult.className = 'result-msg ' + cls;
+}
+
+function setProfileResult(msg, cls) {
+  profileResult.textContent = msg;
+  profileResult.className = 'result-msg ' + cls;
 }
 
 function renderEvent(event) {
@@ -221,16 +335,32 @@ function renderEvent(event) {
   const meta = document.createElement('div');
   meta.className = 'event-meta';
 
-  const pubkey = document.createElement('span');
-  pubkey.className = 'event-pubkey';
-  pubkey.textContent = event.pubkey.slice(0, 12) + '…';
-  pubkey.title = event.pubkey;
+  const profile = store.profiles.get(event.pubkey);
+  const displayName = profile?.name || profile?.display_name || (event.pubkey.slice(0, 12) + '…');
+
+  const avatar = document.createElement('div');
+  avatar.className = 'avatar';
+  if (profile?.picture) {
+    const img = document.createElement('img');
+    img.src = profile.picture;
+    img.alt = displayName;
+    img.onerror = () => { img.remove(); avatar.textContent = displayName[0].toUpperCase(); };
+    avatar.appendChild(img);
+  } else {
+    avatar.textContent = displayName[0].toUpperCase();
+    avatar.style.background = pubkeyColor(event.pubkey);
+  }
+
+  const authorEl = document.createElement('span');
+  authorEl.className = 'event-pubkey';
+  authorEl.textContent = displayName;
+  authorEl.title = event.pubkey;
 
   const time = document.createElement('span');
   time.className = 'event-time';
   time.textContent = formatTime(event.created_at);
 
-  meta.append(pubkey, time);
+  meta.append(avatar, authorEl, time);
 
   const content = document.createElement('div');
   content.className = 'event-content';
@@ -238,6 +368,11 @@ function renderEvent(event) {
 
   card.append(meta, content);
   return card;
+}
+
+function pubkeyColor(pubkey) {
+  const colors = ['#7c3aed', '#0891b2', '#059669', '#d97706', '#dc2626', '#db2777', '#6366f1'];
+  return colors[parseInt(pubkey.slice(0, 2), 16) % colors.length];
 }
 
 function formatTime(unixSec) {
