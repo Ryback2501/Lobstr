@@ -2,6 +2,9 @@ import { generateKeypair, importPrivkey, createEvent } from './nostr.js';
 import { RelayConnection } from './relay.js';
 import { store } from './store.js';
 
+const VERSION = '0.0.1';
+const SUPPORTED_NIPS = ['01'];
+
 // DOM refs
 const pubkeyDisplay = document.getElementById('pubkey-display');
 const privkeyDisplay = document.getElementById('privkey-display');
@@ -27,7 +30,28 @@ const postResult = document.getElementById('post-result');
 const feedStatus = document.getElementById('feed-status');
 const eventsList = document.getElementById('events-list');
 
+const infoBtn = document.getElementById('info-btn');
+const infoModal = document.getElementById('info-modal');
+const modalCloseBtn = document.getElementById('modal-close-btn');
+const modalVersion = document.getElementById('modal-version');
+const modalNipsList = document.getElementById('modal-nips-list');
+
 let relay = null;
+
+// ── Info modal ────────────────────────────────────────────────────────────────
+
+modalVersion.textContent = `v${VERSION}`;
+for (const nip of SUPPORTED_NIPS) {
+  const badge = document.createElement('span');
+  badge.className = 'nip-badge';
+  badge.textContent = `NIP-${nip}`;
+  modalNipsList.appendChild(badge);
+}
+
+infoBtn.addEventListener('click', () => { infoModal.hidden = false; });
+modalCloseBtn.addEventListener('click', () => { infoModal.hidden = true; });
+infoModal.addEventListener('click', (e) => { if (e.target === infoModal) infoModal.hidden = true; });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') infoModal.hidden = true; });
 
 // ── Initialization ────────────────────────────────────────────────────────────
 

@@ -8,9 +8,25 @@
 </head>
 <body>
   <header>
-    <h1>Lobstr</h1>
-    <p class="subtitle">A minimal Nostr client</p>
+    <div class="header-text">
+      <h1>Lobstr</h1>
+      <p class="subtitle">A minimal Nostr client</p>
+    </div>
+    <button id="info-btn" class="info-btn" aria-label="About">i</button>
   </header>
+
+  <div id="info-modal" class="modal-overlay" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <button id="modal-close-btn" class="modal-close" aria-label="Close">&times;</button>
+      <h2 id="modal-title">Lobstr</h2>
+      <p id="modal-version" class="modal-version"></p>
+      <p class="modal-description">A minimal Nostr client running entirely in the browser. No server, no tracking — just you and the relays.</p>
+      <div class="modal-nips">
+        <p class="modal-nips-label">Supported NIPs</p>
+        <div id="modal-nips-list" class="nips-list"></div>
+      </div>
+    </div>
+  </div>
 
   <main>
     <section id="keys-panel" class="panel">

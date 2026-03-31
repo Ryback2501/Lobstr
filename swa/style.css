@@ -31,6 +31,9 @@ body {
 header {
   max-width: 640px;
   margin: 0 auto 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
 }
 
 header h1 {
@@ -43,6 +46,121 @@ header .subtitle {
   color: var(--muted);
   font-size: 0.85rem;
   margin-top: 0.15rem;
+}
+
+.info-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-style: italic;
+  font-weight: 700;
+  padding: 0;
+  flex-shrink: 0;
+  margin-top: 0.25rem;
+}
+
+.info-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: transparent;
+}
+
+/* ── Modal ── */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 1rem;
+}
+
+.modal-overlay[hidden] {
+  display: none;
+}
+
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.75rem;
+  width: 100%;
+  max-width: 420px;
+  position: relative;
+}
+
+.modal-close {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 1.25rem;
+  padding: 0.25rem 0.5rem;
+  line-height: 1;
+}
+
+.modal-close:hover {
+  color: var(--text);
+  background: transparent;
+}
+
+.modal h2 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin-bottom: 0.2rem;
+}
+
+.modal-version {
+  font-size: 0.75rem;
+  color: var(--accent);
+  margin-bottom: 0.85rem;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+}
+
+.modal-description {
+  font-size: 0.875rem;
+  color: var(--muted);
+  line-height: 1.55;
+  margin-bottom: 1.25rem;
+}
+
+.modal-nips-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-bottom: 0.6rem;
+}
+
+.nips-list {
+  display: flex;
+  flex-direction: row;
+  gap: 0.5rem;
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+}
+
+.nip-badge {
+  flex-shrink: 0;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.35rem 0.75rem;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 0.8rem;
+  color: var(--text);
+  white-space: nowrap;
 }
 
 main {
