@@ -1,0 +1,69 @@
+import { schnorr } from 'https://esm.sh/@noble/curves@1.8.1/secp256k1';
+import { sha256 } from 'https://esm.sh/@noble/hashes@1.7.2/sha256';
+import { bytesToHex, utf8ToBytes } from 'https://esm.sh/@noble/hashes@1.7.2/utils';
+
+export function hexToBytes(hex) {
+  if (hex.length % 2 !== 0) throw new Error('Invalid hex string');
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  }
+  return bytes;
+}
+
+export function generateKeypair() {
+  const privkey = schnorr.utils.randomPrivateKey();
+  const pubkey = schnorr.getPublicKey(privkey);
+  return {
+    privkey,
+    pubkey,
+    privkeyHex: bytesToHex(privkey),
+    pubkeyHex: bytesToHex(pubkey),
+  };
+}
+
+export function importPrivkey(hexString) {
+  if (!/^[0-9a-fA-F]{64}$/.test(hexString)) {
+    throw new Error('Private key must be 64 hex characters');
+  }
+  const privkey = hexToBytes(hexString);
+  const pubkey = schnorr.getPublicKey(privkey);
+  return {
+    privkey,
+    pubkey,
+    privkeyHex: hexString.toLowerCase(),
+    pubkeyHex: bytesToHex(pubkey),
+  };
+}
+
+export function serializeEvent(pubkeyHex, createdAt, kind, tags, content) {
+  return JSON.stringify([0, pubkeyHex, createdAt, kind, tags, content]);
+}
+
+export function getEventId(serialized) {
+  return bytesToHex(sha256(utf8ToBytes(serialized)));
+}
+
+export function signEvent(eventIdHex, privkey) {
+  return bytesToHex(schnorr.sign(hexToBytes(eventIdHex), privkey));
+}
+
+export function createEvent({ privkeyHex, pubkeyHex, kind = 1, tags = [], content }) {
+  const privkey = hexToBytes(privkeyHex);
+  const createdAt = Math.floor(Date.now() / 1000);
+  const serialized = serializeEvent(pubkeyHex, createdAt, kind, tags, content);
+  const id = getEventId(serialized);
+  const sig = signEvent(id, privkey);
+  return { id, pubkey: pubkeyHex, created_at: createdAt, kind, tags, content, sig };
+}
+
+export function verifyEvent(event) {
+  try {
+    const serialized = serializeEvent(event.pubkey, event.created_at, event.kind, event.tags, event.content);
+    const expectedId = getEventId(serialized);
+    if (expectedId !== event.id) return false;
+    return schnorr.verify(hexToBytes(event.sig), hexToBytes(event.id), hexToBytes(event.pubkey));
+  } catch {
+    return false;
+  }
+}
