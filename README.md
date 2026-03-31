@@ -1,3 +1,3 @@
 # Lobstr
 
-A minimal Nostr client.
+A minimal Nostr client. Implemented to work on a browser.
