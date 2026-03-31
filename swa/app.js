@@ -62,7 +62,7 @@ let metadataSubId = null;
 let idSearchSubId = null;
 let mentionsSubId = null;
 let sinceFilter = 0; // seconds offset from now; 0 = no filter
-let untilFilter = 0; // unix timestamp; 0 = no filter
+let untilFilter = 0; // seconds offset from now; 0 = no filter
 let feedActiveTab = 'feed'; // 'feed' | 'mentions'
 const replySubscriptions = new Map(); // eventId → { subId, container }
 const replySubIdToContainer = new Map(); // subId → container element

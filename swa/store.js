@@ -14,7 +14,6 @@ export const store = {
   relayUrl: localStorage.getItem('relayUrl') || 'wss://relay.damus.io',
   relayStatus: 'disconnected',
   events: [],
-  subscriptionId: null,
 
   on,
 
