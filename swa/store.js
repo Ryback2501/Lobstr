@@ -39,6 +39,8 @@ export const store = {
   },
 
   addEvent(event) {
+    if (event.kind >= 20000 && event.kind < 30000) return;
+
     const isReplaceable = event.kind === 0 || event.kind === 3
       || (event.kind >= 10000 && event.kind < 20000);
     const isAddressable = event.kind >= 30000 && event.kind < 40000;
