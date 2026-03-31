@@ -88,4 +88,22 @@ export const store = {
     this.profiles.set(pubkey, metadata);
     emit('profiles', pubkey);
   },
+
+  mentions: [],
+
+  addMention(event) {
+    if (this.mentions.find(e => e.id === event.id)) return;
+    const insertIdx = this.mentions.findIndex(e => e.created_at < event.created_at);
+    if (insertIdx === -1) {
+      this.mentions.push(event);
+    } else {
+      this.mentions.splice(insertIdx, 0, event);
+    }
+    emit('mentions', this.mentions);
+  },
+
+  clearMentions() {
+    this.mentions = [];
+    emit('mentions', this.mentions);
+  },
 };

@@ -40,6 +40,12 @@ const feedSinceSelect = document.getElementById('feed-since');
 const feedUntilInput = document.getElementById('feed-until');
 const feedIdSearch = document.getElementById('feed-id-search');
 const feedIdSearchBtn = document.getElementById('feed-id-search-btn');
+const feedHeader = document.getElementById('feed-header');
+const feedFilters = document.getElementById('feed-filters');
+const tabFeed = document.getElementById('tab-feed');
+const tabMentions = document.getElementById('tab-mentions');
+const mentionsList = document.getElementById('mentions-list');
+const mentionsStatus = document.getElementById('mentions-status');
 
 const infoBtn = document.getElementById('info-btn');
 const infoModal = document.getElementById('info-modal');
@@ -54,8 +60,12 @@ let ownProfileSubId = null;
 let feedSubId = null;
 let metadataSubId = null;
 let idSearchSubId = null;
+let mentionsSubId = null;
 let sinceFilter = 0; // seconds offset from now; 0 = no filter
 let untilFilter = 0; // unix timestamp; 0 = no filter
+let feedActiveTab = 'feed'; // 'feed' | 'mentions'
+const replySubscriptions = new Map(); // eventId → { subId, container }
+const replySubIdToContainer = new Map(); // subId → container element
 
 // ── Info modal ────────────────────────────────────────────────────────────────
 
@@ -91,6 +101,12 @@ if (savedPrivkey) {
 
 store.on('keys', (keys) => {
   pubkeyDisplay.value = keys ? keys.pubkeyHex : '';
+  if (keys && store.relayStatus === 'connected' && relay && !mentionsSubId) {
+    mentionsSubId = crypto.randomUUID();
+    store.clearMentions();
+    relay.subscribe(mentionsSubId, [{ kinds: [1], '#p': [keys.pubkeyHex], limit: 20 }]);
+    updateFeedTabs();
+  }
 });
 
 store.on('relayStatus', (status) => {
@@ -100,22 +116,30 @@ store.on('relayStatus', (status) => {
   if (status === 'connected') {
     connectBtn.textContent = 'Disconnect';
     store.clearEvents();
+    store.clearMentions();
 
     if (store.keys) {
       ownProfileSubId = crypto.randomUUID();
       relay.subscribe(ownProfileSubId, [{ kinds: [0], authors: [store.keys.pubkeyHex], limit: 1 }]);
+      mentionsSubId = crypto.randomUUID();
+      relay.subscribe(mentionsSubId, [{ kinds: [1], '#p': [store.keys.pubkeyHex], limit: 20 }]);
     }
 
     subscribeToFeed();
+    updateFeedTabs();
   } else {
     connectBtn.textContent = 'Connect';
     ownProfileSubId = null;
     feedSubId = null;
     metadataSubId = null;
     idSearchSubId = null;
+    mentionsSubId = null;
+    replySubscriptions.clear();
+    replySubIdToContainer.clear();
     if (status === 'disconnected') {
       feedStatus.textContent = 'Connect to a relay to see events.';
     }
+    updateFeedTabs();
   }
 });
 
@@ -130,6 +154,14 @@ store.on('events', (events) => {
 
 store.on('profiles', () => {
   rerenderFeed();
+});
+
+store.on('mentions', (events) => {
+  mentionsStatus.hidden = events.length > 0;
+  mentionsList.innerHTML = '';
+  for (const event of events) {
+    mentionsList.appendChild(renderEvent(event));
+  }
 });
 
 // ── Key management ────────────────────────────────────────────────────────────
@@ -211,6 +243,9 @@ feedUntilInput.addEventListener('change', () => {
   if (store.relayStatus === 'connected') subscribeToFeed();
 });
 
+tabFeed.addEventListener('click', () => switchTab('feed'));
+tabMentions.addEventListener('click', () => switchTab('mentions'));
+
 feedIdSearchBtn.addEventListener('click', () => {
   const id = feedIdSearch.value.trim().toLowerCase();
   if (!/^[0-9a-f]{64}$/.test(id)) {
@@ -250,6 +285,13 @@ connectBtn.addEventListener('click', async () => {
         if (subId === ownProfileSubId) populateProfileForm(event.pubkey);
       } else if (subId === feedSubId || subId === idSearchSubId) {
         store.addEvent(event);
+      } else if (subId === mentionsSubId) {
+        store.addMention(event);
+      } else if (replySubIdToContainer.has(subId)) {
+        const container = replySubIdToContainer.get(subId);
+        container.querySelector('.replies-loading')?.remove();
+        container.querySelector('.replies-empty')?.remove();
+        container.appendChild(renderReply(event));
       }
     },
     onEOSE: (subId) => {
@@ -259,6 +301,18 @@ connectBtn.addEventListener('click', async () => {
       } else if (subId === idSearchSubId) {
         if (store.events.length === 0) feedStatus.textContent = 'Event not found.';
         else fetchMissingMetadata();
+      } else if (subId === mentionsSubId) {
+        if (store.mentions.length === 0) mentionsStatus.textContent = 'No mentions yet.';
+        fetchMissingMetadata();
+      } else if (replySubIdToContainer.has(subId)) {
+        const container = replySubIdToContainer.get(subId);
+        if (container.querySelector('.replies-loading')) {
+          container.querySelector('.replies-loading').remove();
+          const empty = document.createElement('div');
+          empty.className = 'replies-empty';
+          empty.textContent = 'No replies yet.';
+          container.appendChild(empty);
+        }
       }
     },
     onClosed: (subId, message) => {
@@ -266,6 +320,8 @@ connectBtn.addEventListener('click', async () => {
         : subId === ownProfileSubId ? 'profile'
         : subId === metadataSubId ? 'metadata'
         : subId === idSearchSubId ? 'search'
+        : subId === mentionsSubId ? 'mentions'
+        : replySubIdToContainer.has(subId) ? 'replies'
         : 'unknown';
       relayNotice.textContent = `Relay closed ${label} subscription: ${message || 'no reason given'}`;
       relayNotice.hidden = false;
@@ -368,8 +424,11 @@ function populateProfileForm(pubkey) {
 }
 
 function fetchMissingMetadata() {
-  const unknown = [...new Set(store.events.map(e => e.pubkey))]
-    .filter(pk => !store.profiles.has(pk));
+  const allPubkeys = [
+    ...store.events.map(e => e.pubkey),
+    ...store.mentions.map(e => e.pubkey),
+  ];
+  const unknown = [...new Set(allPubkeys)].filter(pk => !store.profiles.has(pk));
   if (!unknown.length || !relay) return;
 
   if (metadataSubId) relay.unsubscribe(metadataSubId);
@@ -457,15 +516,42 @@ function renderEvent(event) {
   replyBtn.className = 'btn-reply';
   replyBtn.textContent = 'Reply';
 
-  actions.appendChild(replyBtn);
+  const showRepliesBtn = document.createElement('button');
+  showRepliesBtn.className = 'btn-reply';
+  showRepliesBtn.textContent = 'Replies';
+
+  actions.append(replyBtn, showRepliesBtn);
   card.append(content, actions);
 
   const replyForm = createReplyForm(event);
   card.appendChild(replyForm);
 
+  const repliesContainer = document.createElement('div');
+  repliesContainer.className = 'replies-container';
+  repliesContainer.hidden = true;
+  card.appendChild(repliesContainer);
+
   replyBtn.addEventListener('click', () => {
     replyForm.hidden = !replyForm.hidden;
     if (!replyForm.hidden) replyForm.querySelector('textarea').focus();
+  });
+
+  showRepliesBtn.addEventListener('click', () => {
+    const existing = replySubscriptions.get(event.id);
+    if (existing) {
+      repliesContainer.hidden = !repliesContainer.hidden;
+    } else {
+      if (store.relayStatus !== 'connected' || !relay) return;
+      repliesContainer.hidden = false;
+      const loadingEl = document.createElement('div');
+      loadingEl.className = 'replies-loading';
+      loadingEl.textContent = 'Loading replies…';
+      repliesContainer.appendChild(loadingEl);
+      const subId = crypto.randomUUID();
+      replySubscriptions.set(event.id, { subId, container: repliesContainer });
+      replySubIdToContainer.set(subId, repliesContainer);
+      relay.subscribe(subId, [{ kinds: [1], '#e': [event.id], limit: 20 }]);
+    }
   });
 
   return card;
@@ -548,6 +634,68 @@ function createReplyForm(parentEvent) {
   });
 
   return form;
+}
+
+function renderReply(event) {
+  const card = document.createElement('div');
+  card.className = 'reply-card';
+
+  const meta = document.createElement('div');
+  meta.className = 'event-meta';
+
+  const profile = store.profiles.get(event.pubkey);
+  const displayName = profile?.name || profile?.display_name || (event.pubkey.slice(0, 12) + '…');
+
+  const avatar = document.createElement('div');
+  avatar.className = 'avatar';
+  if (profile?.picture) {
+    const img = document.createElement('img');
+    img.src = profile.picture;
+    img.alt = displayName;
+    img.onerror = () => { img.remove(); avatar.textContent = displayName[0].toUpperCase(); };
+    avatar.appendChild(img);
+  } else {
+    avatar.textContent = displayName[0].toUpperCase();
+    avatar.style.background = pubkeyColor(event.pubkey);
+  }
+
+  const authorEl = document.createElement('span');
+  authorEl.className = 'event-pubkey';
+  authorEl.textContent = displayName;
+  authorEl.title = event.pubkey;
+
+  const time = document.createElement('span');
+  time.className = 'event-time';
+  time.textContent = formatTime(event.created_at);
+
+  meta.append(avatar, authorEl, time);
+
+  const content = document.createElement('div');
+  content.className = 'event-content';
+  content.textContent = event.content;
+
+  card.append(meta, content);
+  return card;
+}
+
+function switchTab(tab) {
+  feedActiveTab = tab;
+  tabFeed.classList.toggle('active', tab === 'feed');
+  tabMentions.classList.toggle('active', tab === 'mentions');
+  feedFilters.hidden = tab !== 'feed';
+  feedStatus.hidden = tab !== 'feed';
+  eventsList.hidden = tab !== 'feed';
+  mentionsStatus.hidden = tab !== 'mentions';
+  mentionsList.hidden = tab !== 'mentions';
+}
+
+function updateFeedTabs() {
+  const showTabs = !!(store.keys && store.relayStatus === 'connected');
+  feedHeader.hidden = !showTabs;
+  if (!showTabs) {
+    switchTab('feed');
+    feedStatus.hidden = false;
+  }
 }
 
 function pubkeyColor(pubkey) {

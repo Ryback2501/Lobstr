@@ -114,7 +114,11 @@
 
     <section id="feed-panel" class="panel">
       <h2>Feed</h2>
-      <div class="feed-filters">
+      <div id="feed-header" class="feed-header" hidden>
+        <button id="tab-feed" class="tab-btn active">Feed</button>
+        <button id="tab-mentions" class="tab-btn">Mentions</button>
+      </div>
+      <div id="feed-filters" class="feed-filters">
         <select id="feed-since">
           <option value="0">All time</option>
           <option value="3600">Last hour</option>
@@ -134,6 +138,8 @@
       </div>
       <div id="feed-status" class="feed-status">Connect to a relay to see events.</div>
       <div id="events-list"></div>
+      <div id="mentions-status" class="feed-status" hidden>No mentions yet.</div>
+      <div id="mentions-list" hidden></div>
     </section>
   </main>
 

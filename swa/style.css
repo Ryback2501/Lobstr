@@ -361,6 +361,36 @@ details[open] > summary::before {
   color: var(--muted);
 }
 
+.feed-header {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.feed-header[hidden] {
+  display: none;
+}
+
+.tab-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+  padding: 0.35rem 0.6rem;
+}
+
+.tab-btn:hover {
+  color: var(--text);
+  background: transparent;
+}
+
+.tab-btn.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
 .feed-filters {
   display: flex;
   align-items: center;
@@ -489,4 +519,26 @@ details[open] > summary::before {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+}
+
+.replies-container {
+  margin-top: 0.75rem;
+  padding-left: 0.75rem;
+  border-left: 2px solid var(--border);
+}
+
+.replies-loading,
+.replies-empty {
+  font-size: 0.78rem;
+  color: var(--muted);
+  padding: 0.35rem 0;
+}
+
+.reply-card {
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--border);
+}
+
+.reply-card:first-child {
+  border-top: none;
 }
