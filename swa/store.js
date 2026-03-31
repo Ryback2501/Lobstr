@@ -11,8 +11,8 @@ function emit(event, data) {
 
 export const store = {
   keys: null,
-  relayUrl: localStorage.getItem('relayUrl') || 'wss://relay.damus.io',
-  relayStatus: 'disconnected',
+  relayUrls: JSON.parse(localStorage.getItem('relayUrls') || '["wss://relay.damus.io"]'),
+  connectedRelayUrls: new Set(JSON.parse(localStorage.getItem('connectedRelayUrls') || '[]')),
   events: [],
 
   on,
@@ -27,14 +27,14 @@ export const store = {
     emit('keys', keys);
   },
 
-  setRelayUrl(url) {
-    this.relayUrl = url;
-    localStorage.setItem('relayUrl', url);
+  setRelayUrls(urls) {
+    this.relayUrls = urls;
+    localStorage.setItem('relayUrls', JSON.stringify(urls));
   },
 
-  setRelayStatus(status) {
-    this.relayStatus = status;
-    emit('relayStatus', status);
+  setConnectedRelayUrls(urlSet) {
+    this.connectedRelayUrls = urlSet;
+    localStorage.setItem('connectedRelayUrls', JSON.stringify([...urlSet]));
   },
 
   addEvent(event) {

@@ -23,10 +23,9 @@ const profilePictureInput = document.getElementById('profile-picture');
 const profileSaveBtn = document.getElementById('profile-save-btn');
 const profileResult = document.getElementById('profile-result');
 
-const relayUrlInput = document.getElementById('relay-url');
-const connectBtn = document.getElementById('connect-btn');
-const statusDot = document.getElementById('status-dot');
-const statusLabel = document.getElementById('status-label');
+const relayAddInput = document.getElementById('relay-add-input');
+const relayAddBtn = document.getElementById('relay-add-btn');
+const relayListEl = document.getElementById('relay-list');
 const relayNotice = document.getElementById('relay-notice');
 
 const postContent = document.getElementById('post-content');
@@ -55,7 +54,9 @@ const modalNipsList = document.getElementById('modal-nips-list');
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
-let relay = null;
+const relays = new Map(); // url → { conn: RelayConnection|null, status: string }
+const activeSubs = new Map(); // subId → filters (all live REQs, for re-subscribing new relays)
+
 let ownProfileSubId = null;
 let feedSubId = null;
 let metadataSubId = null;
@@ -66,6 +67,7 @@ let untilFilter = 0; // seconds offset from now; 0 = no filter
 let feedActiveTab = 'feed'; // 'feed' | 'mentions'
 const replySubscriptions = new Map(); // eventId → { subId, container }
 const replySubIdToContainer = new Map(); // subId → container element
+const replyEventIds = new Map(); // subId → Set<eventId> (dedup across relays)
 
 // ── Info modal ────────────────────────────────────────────────────────────────
 
@@ -84,7 +86,14 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape') infoModal.
 
 // ── Initialization ────────────────────────────────────────────────────────────
 
-relayUrlInput.value = store.relayUrl;
+// Migrate legacy single relayUrl to new list format
+const legacyUrl = localStorage.getItem('relayUrl');
+if (legacyUrl && !localStorage.getItem('relayUrls')) {
+  store.setRelayUrls([legacyUrl]);
+  const migrated = new Set([legacyUrl]);
+  store.setConnectedRelayUrls(migrated);
+  localStorage.removeItem('relayUrl');
+}
 
 const savedPrivkey = sessionStorage.getItem('privkeyHex');
 if (savedPrivkey) {
@@ -97,48 +106,24 @@ if (savedPrivkey) {
   }
 }
 
+// Populate relay Map from store and auto-connect previously connected relays
+for (const url of store.relayUrls) {
+  relays.set(url, { conn: null, status: 'disconnected' });
+}
+rerenderRelayList();
+
+for (const url of store.connectedRelayUrls) {
+  if (relays.has(url)) connectRelay(url);
+}
+
 // ── Store subscriptions ───────────────────────────────────────────────────────
 
 store.on('keys', (keys) => {
   pubkeyDisplay.value = keys ? keys.pubkeyHex : '';
-  if (keys && store.relayStatus === 'connected' && relay && !mentionsSubId) {
+  if (keys && isAnyConnected() && !mentionsSubId) {
     mentionsSubId = crypto.randomUUID();
     store.clearMentions();
-    relay.subscribe(mentionsSubId, [{ kinds: [1], '#p': [keys.pubkeyHex], limit: 20 }]);
-    updateFeedTabs();
-  }
-});
-
-store.on('relayStatus', (status) => {
-  statusDot.className = 'dot ' + status;
-  statusLabel.textContent = status.charAt(0).toUpperCase() + status.slice(1);
-
-  if (status === 'connected') {
-    connectBtn.textContent = 'Disconnect';
-    store.clearEvents();
-    store.clearMentions();
-
-    if (store.keys) {
-      ownProfileSubId = crypto.randomUUID();
-      relay.subscribe(ownProfileSubId, [{ kinds: [0], authors: [store.keys.pubkeyHex], limit: 1 }]);
-      mentionsSubId = crypto.randomUUID();
-      relay.subscribe(mentionsSubId, [{ kinds: [1], '#p': [store.keys.pubkeyHex], limit: 20 }]);
-    }
-
-    subscribeToFeed();
-    updateFeedTabs();
-  } else {
-    connectBtn.textContent = 'Connect';
-    ownProfileSubId = null;
-    feedSubId = null;
-    metadataSubId = null;
-    idSearchSubId = null;
-    mentionsSubId = null;
-    replySubscriptions.clear();
-    replySubIdToContainer.clear();
-    if (status === 'disconnected') {
-      feedStatus.textContent = 'Connect to a relay to see events.';
-    }
+    subscribeAll(mentionsSubId, [{ kinds: [1], '#p': [keys.pubkeyHex], limit: 20 }]);
     updateFeedTabs();
   }
 });
@@ -199,7 +184,7 @@ profileSaveBtn.addEventListener('click', async () => {
     setProfileResult('Generate or import a keypair first.', 'err');
     return;
   }
-  if (store.relayStatus !== 'connected') {
+  if (!isAnyConnected()) {
     setProfileResult('Connect to a relay first.', 'err');
     return;
   }
@@ -221,7 +206,7 @@ profileSaveBtn.addEventListener('click', async () => {
       tags: [],
       content: JSON.stringify(metadata),
     });
-    await relay.publish(event);
+    await publishToAll(event);
     store.setProfile(store.keys.pubkeyHex, { ...metadata, _created_at: event.created_at });
     setProfileResult('Saved.', 'ok');
   } catch (err) {
@@ -231,16 +216,16 @@ profileSaveBtn.addEventListener('click', async () => {
   }
 });
 
-// ── Feed filters ─────────────────────────────────────────────────────────────
+// ── Feed filters ──────────────────────────────────────────────────────────────
 
 feedSinceSelect.addEventListener('change', () => {
   sinceFilter = parseInt(feedSinceSelect.value) || 0;
-  if (store.relayStatus === 'connected') subscribeToFeed();
+  if (isAnyConnected()) subscribeToFeed();
 });
 
 feedUntilInput.addEventListener('change', () => {
   untilFilter = parseInt(feedUntilInput.value) || 0;
-  if (store.relayStatus === 'connected') subscribeToFeed();
+  if (isAnyConnected()) subscribeToFeed();
 });
 
 tabFeed.addEventListener('click', () => switchTab('feed'));
@@ -252,100 +237,81 @@ feedIdSearchBtn.addEventListener('click', () => {
     feedStatus.textContent = 'Event ID must be 64 hex characters.';
     return;
   }
-  if (store.relayStatus !== 'connected') {
+  if (!isAnyConnected()) {
     feedStatus.textContent = 'Connect to a relay first.';
     return;
   }
-  if (idSearchSubId) relay.unsubscribe(idSearchSubId);
+  if (idSearchSubId) unsubscribeAll(idSearchSubId);
   idSearchSubId = crypto.randomUUID();
   feedStatus.textContent = 'Searching…';
-  relay.subscribe(idSearchSubId, [{ ids: [id], limit: 1 }]);
+  subscribeAll(idSearchSubId, [{ ids: [id], limit: 1 }]);
 });
 
-// ── Relay ─────────────────────────────────────────────────────────────────────
+// ── Relay management ──────────────────────────────────────────────────────────
 
-connectBtn.addEventListener('click', async () => {
-  if (store.relayStatus === 'connected') {
-    relay?.disconnect();
-    relay = null;
+relayAddBtn.addEventListener('click', addRelay);
+relayAddInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') addRelay(); });
+
+function addRelay() {
+  const url = relayAddInput.value.trim();
+  if (!url) return;
+  if (!url.startsWith('wss://') && !url.startsWith('ws://')) {
+    relayNotice.textContent = 'Relay URL must start with wss:// or ws://';
+    relayNotice.hidden = false;
     return;
   }
-
-  const url = relayUrlInput.value.trim();
-  if (!url) return;
-
-  store.setRelayUrl(url);
-  relayNotice.hidden = true;
-
-  relay = new RelayConnection(url, {
-    onEvent: (subId, event) => {
-      if (!verifyEvent(event)) return;
-      if (event.kind === 0) {
-        handleMetadataEvent(event);
-        if (subId === ownProfileSubId) populateProfileForm(event.pubkey);
-      } else if (subId === feedSubId || subId === idSearchSubId) {
-        store.addEvent(event);
-      } else if (subId === mentionsSubId) {
-        store.addMention(event);
-      } else if (replySubIdToContainer.has(subId)) {
-        const container = replySubIdToContainer.get(subId);
-        container.querySelector('.replies-loading')?.remove();
-        container.querySelector('.replies-empty')?.remove();
-        container.appendChild(renderReply(event));
-      }
-    },
-    onEOSE: (subId) => {
-      if (subId === feedSubId) {
-        if (store.events.length === 0) feedStatus.textContent = 'No events found.';
-        fetchMissingMetadata();
-      } else if (subId === idSearchSubId) {
-        if (store.events.length === 0) feedStatus.textContent = 'Event not found.';
-        else fetchMissingMetadata();
-      } else if (subId === mentionsSubId) {
-        if (store.mentions.length === 0) mentionsStatus.textContent = 'No mentions yet.';
-        fetchMissingMetadata();
-      } else if (replySubIdToContainer.has(subId)) {
-        const container = replySubIdToContainer.get(subId);
-        if (container.querySelector('.replies-loading')) {
-          container.querySelector('.replies-loading').remove();
-          const empty = document.createElement('div');
-          empty.className = 'replies-empty';
-          empty.textContent = 'No replies yet.';
-          container.appendChild(empty);
-        }
-      }
-    },
-    onClosed: (subId, message) => {
-      const label = subId === feedSubId ? 'feed'
-        : subId === ownProfileSubId ? 'profile'
-        : subId === metadataSubId ? 'metadata'
-        : subId === idSearchSubId ? 'search'
-        : subId === mentionsSubId ? 'mentions'
-        : replySubIdToContainer.has(subId) ? 'replies'
-        : 'unknown';
-      relayNotice.textContent = `Relay closed ${label} subscription: ${message || 'no reason given'}`;
-      relayNotice.hidden = false;
-
-      if (subId === feedSubId) {
-        feedStatus.textContent = 'Feed closed by relay. Retrying in 5s…';
-        setTimeout(() => {
-          if (store.relayStatus === 'connected') subscribeToFeed();
-        }, 5000);
-      }
-    },
-    onNotice: (msg) => {
-      relayNotice.textContent = msg;
-      relayNotice.hidden = false;
-    },
-    onStatus: (status) => store.setRelayStatus(status),
-  });
-
-  try {
-    await relay.connect();
-  } catch {
-    // onStatus('error') already called
+  if (relays.has(url)) {
+    relayNotice.textContent = 'Relay already in list.';
+    relayNotice.hidden = false;
+    return;
   }
-});
+  relayNotice.hidden = true;
+  relays.set(url, { conn: null, status: 'disconnected' });
+  store.setRelayUrls([...relays.keys()]);
+  relayAddInput.value = '';
+  rerenderRelayList();
+}
+
+function connectRelay(url) {
+  const entry = relays.get(url);
+  if (!entry || entry.status === 'connected' || entry.status === 'connecting') return;
+
+  const conn = new RelayConnection(url, {
+    onEvent: handleEvent,
+    onEOSE: handleEOSE,
+    onClosed: (subId, message) => handleClosed(url, subId, message),
+    onNotice: (msg) => handleNotice(url, msg),
+    onStatus: (status) => handleRelayStatus(url, status),
+  });
+  entry.conn = conn;
+  conn.connect().catch(() => {});
+
+  const connected = store.connectedRelayUrls;
+  connected.add(url);
+  store.setConnectedRelayUrls(connected);
+}
+
+function disconnectRelay(url) {
+  const entry = relays.get(url);
+  if (entry?.conn) {
+    entry.conn.disconnect();
+    entry.conn = null;
+  }
+
+  const connected = store.connectedRelayUrls;
+  connected.delete(url);
+  store.setConnectedRelayUrls(connected);
+}
+
+function removeRelay(url) {
+  disconnectRelay(url);
+  relays.delete(url);
+  store.setRelayUrls([...relays.keys()]);
+  const connected = store.connectedRelayUrls;
+  connected.delete(url);
+  store.setConnectedRelayUrls(connected);
+  rerenderRelayList();
+}
 
 // ── Post ──────────────────────────────────────────────────────────────────────
 
@@ -358,7 +324,7 @@ postBtn.addEventListener('click', async () => {
     setPostResult('Generate or import a keypair first.', 'err');
     return;
   }
-  if (store.relayStatus !== 'connected') {
+  if (!isAnyConnected()) {
     setPostResult('Connect to a relay first.', 'err');
     return;
   }
@@ -376,7 +342,7 @@ postBtn.addEventListener('click', async () => {
       tags: [],
       content,
     });
-    await relay.publish(event);
+    await publishToAll(event);
     store.addEvent(event);
     postContent.value = '';
     charCount.textContent = '0';
@@ -388,19 +354,183 @@ postBtn.addEventListener('click', async () => {
   }
 });
 
+// ── Relay event callbacks ─────────────────────────────────────────────────────
+
+function handleEvent(subId, event) {
+  if (!verifyEvent(event)) return;
+  if (event.kind === 0) {
+    handleMetadataEvent(event);
+    if (subId === ownProfileSubId) populateProfileForm(event.pubkey);
+  } else if (subId === feedSubId || subId === idSearchSubId) {
+    store.addEvent(event);
+  } else if (subId === mentionsSubId) {
+    store.addMention(event);
+  } else if (replySubIdToContainer.has(subId)) {
+    const seen = replyEventIds.get(subId);
+    if (seen && !seen.has(event.id)) {
+      seen.add(event.id);
+      const container = replySubIdToContainer.get(subId);
+      container.querySelector('.replies-loading')?.remove();
+      container.querySelector('.replies-empty')?.remove();
+      container.appendChild(renderReply(event));
+    }
+  }
+}
+
+function handleEOSE(subId) {
+  if (subId === feedSubId) {
+    if (store.events.length === 0) feedStatus.textContent = 'No events found.';
+    fetchMissingMetadata();
+  } else if (subId === idSearchSubId) {
+    if (store.events.length === 0) feedStatus.textContent = 'Event not found.';
+    else fetchMissingMetadata();
+  } else if (subId === mentionsSubId) {
+    if (store.mentions.length === 0) mentionsStatus.textContent = 'No mentions yet.';
+    fetchMissingMetadata();
+  } else if (replySubIdToContainer.has(subId)) {
+    const container = replySubIdToContainer.get(subId);
+    if (container.querySelector('.replies-loading')) {
+      container.querySelector('.replies-loading').remove();
+      const empty = document.createElement('div');
+      empty.className = 'replies-empty';
+      empty.textContent = 'No replies yet.';
+      container.appendChild(empty);
+    }
+  }
+}
+
+function handleClosed(url, subId, message) {
+  let hostname = url;
+  try { hostname = new URL(url).hostname; } catch { /* */ }
+
+  const label = subId === feedSubId ? 'feed'
+    : subId === ownProfileSubId ? 'profile'
+    : subId === metadataSubId ? 'metadata'
+    : subId === idSearchSubId ? 'search'
+    : subId === mentionsSubId ? 'mentions'
+    : replySubIdToContainer.has(subId) ? 'replies'
+    : 'unknown';
+  relayNotice.textContent = `[${hostname}] closed ${label} subscription: ${message || 'no reason given'}`;
+  relayNotice.hidden = false;
+
+  if (subId === feedSubId) {
+    feedStatus.textContent = 'Feed closed by relay. Retrying in 5s…';
+    setTimeout(() => {
+      const entry = relays.get(url);
+      if (entry?.status === 'connected' && entry.conn && activeSubs.has(feedSubId)) {
+        entry.conn.subscribe(feedSubId, activeSubs.get(feedSubId));
+      }
+    }, 5000);
+  }
+}
+
+function handleNotice(url, message) {
+  let hostname = url;
+  try { hostname = new URL(url).hostname; } catch { /* */ }
+  relayNotice.textContent = `[${hostname}] ${message}`;
+  relayNotice.hidden = false;
+}
+
+function handleRelayStatus(url, status) {
+  const entry = relays.get(url);
+  if (!entry) return;
+
+  const wasAnyConnected = isAnyConnected();
+  entry.status = status;
+  rerenderRelayList();
+
+  if (status === 'connected') {
+    if (!wasAnyConnected) {
+      // First relay to connect — clear state and set up all subscriptions
+      store.clearEvents();
+      store.clearMentions();
+      setupSubscriptions();
+    } else {
+      // Additional relay — subscribe it to all currently active subs
+      for (const [subId, filters] of activeSubs) {
+        entry.conn.subscribe(subId, filters);
+      }
+    }
+    updateFeedTabs();
+  } else if (!isAnyConnected()) {
+    // All relays gone — reset subscription state
+    ownProfileSubId = null;
+    feedSubId = null;
+    metadataSubId = null;
+    idSearchSubId = null;
+    mentionsSubId = null;
+    activeSubs.clear();
+    replySubscriptions.clear();
+    replySubIdToContainer.clear();
+    replyEventIds.clear();
+    feedStatus.textContent = 'Connect to a relay to see events.';
+    updateFeedTabs();
+  }
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+function isAnyConnected() {
+  return [...relays.values()].some(e => e.status === 'connected');
+}
+
+function subscribeAll(subId, filters) {
+  activeSubs.set(subId, filters);
+  for (const { conn, status } of relays.values()) {
+    if (status === 'connected' && conn) conn.subscribe(subId, filters);
+  }
+}
+
+function unsubscribeAll(subId) {
+  activeSubs.delete(subId);
+  for (const { conn, status } of relays.values()) {
+    if (status === 'connected' && conn) conn.unsubscribe(subId);
+  }
+}
+
+async function publishToAll(event) {
+  const connected = [...relays.values()].filter(e => e.status === 'connected' && e.conn);
+  if (!connected.length) throw new Error('Not connected to any relay.');
+  const results = await Promise.allSettled(connected.map(e => e.conn.publish(event)));
+  const accepted = results.filter(r => r.status === 'fulfilled');
+  if (!accepted.length) {
+    const err = results.find(r => r.status === 'rejected');
+    throw new Error(err?.reason?.message || 'All relays rejected the event.');
+  }
+}
+
+function setupSubscriptions() {
+  activeSubs.clear();
+  ownProfileSubId = null;
+  feedSubId = null;
+  metadataSubId = null;
+  mentionsSubId = null;
+  idSearchSubId = null;
+
+  if (store.keys) {
+    ownProfileSubId = crypto.randomUUID();
+    subscribeAll(ownProfileSubId, [{ kinds: [0], authors: [store.keys.pubkeyHex], limit: 1 }]);
+    mentionsSubId = crypto.randomUUID();
+    subscribeAll(mentionsSubId, [{ kinds: [1], '#p': [store.keys.pubkeyHex], limit: 20 }]);
+  }
+
+  subscribeToFeed();
+  updateFeedTabs();
+}
+
 function subscribeToFeed() {
-  if (feedSubId) relay.unsubscribe(feedSubId);
+  if (feedSubId) unsubscribeAll(feedSubId);
   feedSubId = crypto.randomUUID();
   store.clearEvents();
   feedStatus.textContent = 'Loading events…';
+  subscribeAll(feedSubId, [buildFeedFilter()]);
+}
 
+function buildFeedFilter() {
   const filter = { kinds: [1], limit: 20 };
   if (sinceFilter > 0) filter.since = Math.floor(Date.now() / 1000) - sinceFilter;
   if (untilFilter > 0) filter.until = Math.floor(Date.now() / 1000) - untilFilter;
-
-  relay.subscribe(feedSubId, [filter]);
+  return filter;
 }
 
 function handleMetadataEvent(event) {
@@ -429,11 +559,53 @@ function fetchMissingMetadata() {
     ...store.mentions.map(e => e.pubkey),
   ];
   const unknown = [...new Set(allPubkeys)].filter(pk => !store.profiles.has(pk));
-  if (!unknown.length || !relay) return;
-
-  if (metadataSubId) relay.unsubscribe(metadataSubId);
+  if (!unknown.length) return;
+  if (metadataSubId) unsubscribeAll(metadataSubId);
   metadataSubId = crypto.randomUUID();
-  relay.subscribe(metadataSubId, [{ kinds: [0], authors: unknown }]);
+  subscribeAll(metadataSubId, [{ kinds: [0], authors: unknown }]);
+}
+
+function rerenderRelayList() {
+  relayListEl.innerHTML = '';
+  if (relays.size === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'relay-list-empty';
+    empty.textContent = 'No relays configured.';
+    relayListEl.appendChild(empty);
+    return;
+  }
+  for (const [url, { status }] of relays) {
+    const item = document.createElement('div');
+    item.className = 'relay-item';
+
+    const dot = document.createElement('span');
+    dot.className = `dot ${status}`;
+
+    const urlEl = document.createElement('span');
+    urlEl.className = 'relay-item-url';
+    urlEl.textContent = url;
+    urlEl.title = url;
+
+    const toggleBtn = document.createElement('button');
+    toggleBtn.className = 'btn-relay-toggle';
+    toggleBtn.disabled = status === 'connecting';
+    toggleBtn.textContent = status === 'connected' ? 'Disconnect'
+      : status === 'connecting' ? 'Connecting…'
+      : 'Connect';
+    toggleBtn.addEventListener('click', () => {
+      if (status === 'connected') disconnectRelay(url);
+      else connectRelay(url);
+    });
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'btn-relay-remove';
+    removeBtn.title = 'Remove relay';
+    removeBtn.textContent = '×';
+    removeBtn.addEventListener('click', () => removeRelay(url));
+
+    item.append(dot, urlEl, toggleBtn, removeBtn);
+    relayListEl.appendChild(item);
+  }
 }
 
 function rerenderFeed() {
@@ -553,7 +725,7 @@ function renderEvent(event) {
     if (existing) {
       repliesContainer.hidden = !repliesContainer.hidden;
     } else {
-      if (store.relayStatus !== 'connected' || !relay) return;
+      if (!isAnyConnected()) return;
       repliesContainer.hidden = false;
       const loadingEl = document.createElement('div');
       loadingEl.className = 'replies-loading';
@@ -562,7 +734,8 @@ function renderEvent(event) {
       const subId = crypto.randomUUID();
       replySubscriptions.set(event.id, { subId, container: repliesContainer });
       replySubIdToContainer.set(subId, repliesContainer);
-      relay.subscribe(subId, [{ kinds: [1], '#e': [event.id], limit: 20 }]);
+      replyEventIds.set(subId, new Set());
+      subscribeAll(subId, [{ kinds: [1], '#e': [event.id], limit: 20 }]);
     }
   });
 
@@ -613,7 +786,7 @@ function createReplyForm(parentEvent) {
       resultMsg.className = 'result-msg err';
       return;
     }
-    if (store.relayStatus !== 'connected') {
+    if (!isAnyConnected()) {
       resultMsg.textContent = 'Not connected.';
       resultMsg.className = 'result-msg err';
       return;
@@ -633,7 +806,7 @@ function createReplyForm(parentEvent) {
         tags: [['e', parentEvent.id], ['p', parentEvent.pubkey]],
         content,
       });
-      await relay.publish(event);
+      await publishToAll(event);
       store.addEvent(event);
       textarea.value = '';
       form.hidden = true;
@@ -702,7 +875,7 @@ function switchTab(tab) {
 }
 
 function updateFeedTabs() {
-  const showTabs = !!(store.keys && store.relayStatus === 'connected');
+  const showTabs = !!(store.keys && isAnyConnected());
   feedHeader.hidden = !showTabs;
   if (!showTabs) {
     switchTab('feed');
