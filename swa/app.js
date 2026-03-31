@@ -36,6 +36,9 @@ const postResult = document.getElementById('post-result');
 
 const feedStatus = document.getElementById('feed-status');
 const eventsList = document.getElementById('events-list');
+const feedSinceSelect = document.getElementById('feed-since');
+const feedIdSearch = document.getElementById('feed-id-search');
+const feedIdSearchBtn = document.getElementById('feed-id-search-btn');
 
 const infoBtn = document.getElementById('info-btn');
 const infoModal = document.getElementById('info-modal');
@@ -49,6 +52,8 @@ let relay = null;
 let ownProfileSubId = null;
 let feedSubId = null;
 let metadataSubId = null;
+let idSearchSubId = null;
+let sinceFilter = 0; // seconds offset from now; 0 = no filter
 
 // ── Info modal ────────────────────────────────────────────────────────────────
 
@@ -99,14 +104,13 @@ store.on('relayStatus', (status) => {
       relay.subscribe(ownProfileSubId, [{ kinds: [0], authors: [store.keys.pubkeyHex], limit: 1 }]);
     }
 
-    feedSubId = crypto.randomUUID();
-    feedStatus.textContent = 'Loading events…';
-    relay.subscribe(feedSubId, [{ kinds: [1], limit: 20 }]);
+    subscribeToFeed();
   } else {
     connectBtn.textContent = 'Connect';
     ownProfileSubId = null;
     feedSubId = null;
     metadataSubId = null;
+    idSearchSubId = null;
     if (status === 'disconnected') {
       feedStatus.textContent = 'Connect to a relay to see events.';
     }
@@ -193,6 +197,29 @@ profileSaveBtn.addEventListener('click', async () => {
   }
 });
 
+// ── Feed filters ─────────────────────────────────────────────────────────────
+
+feedSinceSelect.addEventListener('change', () => {
+  sinceFilter = parseInt(feedSinceSelect.value) || 0;
+  if (store.relayStatus === 'connected') subscribeToFeed();
+});
+
+feedIdSearchBtn.addEventListener('click', () => {
+  const id = feedIdSearch.value.trim().toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(id)) {
+    feedStatus.textContent = 'Event ID must be 64 hex characters.';
+    return;
+  }
+  if (store.relayStatus !== 'connected') {
+    feedStatus.textContent = 'Connect to a relay first.';
+    return;
+  }
+  if (idSearchSubId) relay.unsubscribe(idSearchSubId);
+  idSearchSubId = crypto.randomUUID();
+  feedStatus.textContent = 'Searching…';
+  relay.subscribe(idSearchSubId, [{ ids: [id], limit: 1 }]);
+});
+
 // ── Relay ─────────────────────────────────────────────────────────────────────
 
 connectBtn.addEventListener('click', async () => {
@@ -214,7 +241,7 @@ connectBtn.addEventListener('click', async () => {
       if (event.kind === 0) {
         handleMetadataEvent(event);
         if (subId === ownProfileSubId) populateProfileForm(event.pubkey);
-      } else if (subId === feedSubId) {
+      } else if (subId === feedSubId || subId === idSearchSubId) {
         store.addEvent(event);
       }
     },
@@ -222,6 +249,9 @@ connectBtn.addEventListener('click', async () => {
       if (subId === feedSubId) {
         if (store.events.length === 0) feedStatus.textContent = 'No events found.';
         fetchMissingMetadata();
+      } else if (subId === idSearchSubId) {
+        if (store.events.length === 0) feedStatus.textContent = 'Event not found.';
+        else fetchMissingMetadata();
       }
     },
     onNotice: (msg) => {
@@ -280,6 +310,18 @@ postBtn.addEventListener('click', async () => {
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+function subscribeToFeed() {
+  if (feedSubId) relay.unsubscribe(feedSubId);
+  feedSubId = crypto.randomUUID();
+  store.clearEvents();
+  feedStatus.textContent = 'Loading events…';
+
+  const filter = { kinds: [1], limit: 20 };
+  if (sinceFilter > 0) filter.since = Math.floor(Date.now() / 1000) - sinceFilter;
+
+  relay.subscribe(feedSubId, [filter]);
+}
 
 function handleMetadataEvent(event) {
   try {

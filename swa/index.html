@@ -114,6 +114,18 @@
 
     <section id="feed-panel" class="panel">
       <h2>Feed</h2>
+      <div class="feed-filters">
+        <select id="feed-since">
+          <option value="0">All time</option>
+          <option value="3600">Last hour</option>
+          <option value="86400">Last 24h</option>
+          <option value="604800">Last week</option>
+        </select>
+        <div class="input-row" style="flex:1">
+          <input id="feed-id-search" type="text" placeholder="Find event by ID (64-char hex)" autocomplete="off">
+          <button id="feed-id-search-btn">Find</button>
+        </div>
+      </div>
       <div id="feed-status" class="feed-status">Connect to a relay to see events.</div>
       <div id="events-list"></div>
     </section>
