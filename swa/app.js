@@ -2,10 +2,11 @@ import { generateKeypair, importPrivkey, createEvent } from './nostr.js';
 import { RelayConnection } from './relay.js';
 import { store } from './store.js';
 
-const VERSION = '0.0.1';
-const SUPPORTED_NIPS = ['01'];
+const VERSION = '0.0.2';
+const SUPPORTED_NIPS = ['01', '02'];
 
-// DOM refs
+// ── DOM refs ──────────────────────────────────────────────────────────────────
+
 const pubkeyDisplay = document.getElementById('pubkey-display');
 const privkeyDisplay = document.getElementById('privkey-display');
 const privkeyDisplayWrapper = document.getElementById('privkey-display-wrapper');
@@ -22,6 +23,12 @@ const statusDot = document.getElementById('status-dot');
 const statusLabel = document.getElementById('status-label');
 const relayNotice = document.getElementById('relay-notice');
 
+const followPubkeyInput = document.getElementById('follow-pubkey');
+const followBtn = document.getElementById('follow-btn');
+const followError = document.getElementById('follow-error');
+const followsStatus = document.getElementById('follows-status');
+const followsList = document.getElementById('follows-list');
+
 const postContent = document.getElementById('post-content');
 const charCount = document.getElementById('char-count');
 const postBtn = document.getElementById('post-btn');
@@ -36,7 +43,11 @@ const modalCloseBtn = document.getElementById('modal-close-btn');
 const modalVersion = document.getElementById('modal-version');
 const modalNipsList = document.getElementById('modal-nips-list');
 
+// ── State ─────────────────────────────────────────────────────────────────────
+
 let relay = null;
+let followsSubId = null;
+let feedSubId = null;
 
 // ── Info modal ────────────────────────────────────────────────────────────────
 
@@ -56,12 +67,13 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape') infoModal.
 // ── Initialization ────────────────────────────────────────────────────────────
 
 relayUrlInput.value = store.relayUrl;
+followsStatus.textContent = 'Connect with an identity to load your follow list.';
 
 const savedPrivkey = sessionStorage.getItem('privkeyHex');
 if (savedPrivkey) {
   try {
     const keys = importPrivkey(savedPrivkey);
-    store.keys = keys; // restore quietly, no emit needed yet
+    store.keys = keys;
     pubkeyDisplay.value = keys.pubkeyHex;
   } catch {
     sessionStorage.removeItem('privkeyHex');
@@ -80,17 +92,32 @@ store.on('relayStatus', (status) => {
 
   if (status === 'connected') {
     connectBtn.textContent = 'Disconnect';
-    feedStatus.textContent = 'Loading events…';
     store.clearEvents();
-    const subId = crypto.randomUUID();
-    store.subscriptionId = subId;
-    relay.subscribe(subId, [{ kinds: [1], limit: 20 }]);
+    store.setFollows([]);
+
+    if (store.keys) {
+      // Load follow list first; feed subscription happens after EOSE
+      followsSubId = crypto.randomUUID();
+      followsStatus.textContent = 'Loading follow list…';
+      relay.subscribe(followsSubId, [{ kinds: [3], authors: [store.keys.pubkeyHex], limit: 1 }]);
+    } else {
+      followsStatus.textContent = 'Connect with an identity to load your follow list.';
+      subscribeToFeed();
+    }
   } else {
     connectBtn.textContent = 'Connect';
+    followsSubId = null;
+    feedSubId = null;
     if (status === 'disconnected') {
       feedStatus.textContent = 'Connect to a relay to see events.';
+      followsStatus.textContent = 'Connect with an identity to load your follow list.';
     }
   }
+});
+
+store.on('follows', (follows) => {
+  followsStatus.textContent = follows.length === 0 ? 'Not following anyone yet.' : '';
+  renderFollows(follows);
 });
 
 store.on('events', (events) => {
@@ -146,10 +173,23 @@ connectBtn.addEventListener('click', async () => {
   relayNotice.hidden = true;
 
   relay = new RelayConnection(url, {
-    onEvent: (_subId, event) => store.addEvent(event),
-    onEOSE: (_subId) => {
-      if (store.events.length === 0) {
-        feedStatus.textContent = 'No events found.';
+    onEvent: (subId, event) => {
+      if (subId === followsSubId && event.kind === 3) {
+        handleFollowListEvent(event);
+      } else if (subId === feedSubId) {
+        store.addEvent(event);
+      }
+    },
+    onEOSE: (subId) => {
+      if (subId === followsSubId) {
+        if (store.follows.length === 0) {
+          followsStatus.textContent = 'Not following anyone yet.';
+        }
+        subscribeToFeed();
+      } else if (subId === feedSubId) {
+        if (store.events.length === 0) {
+          feedStatus.textContent = 'No events found.';
+        }
       }
     },
     onNotice: (msg) => {
@@ -165,6 +205,50 @@ connectBtn.addEventListener('click', async () => {
     // onStatus('error') already called
   }
 });
+
+// ── Following ─────────────────────────────────────────────────────────────────
+
+followBtn.addEventListener('click', async () => {
+  if (!store.keys) {
+    showFollowError('Generate or import a keypair first.');
+    return;
+  }
+  if (store.relayStatus !== 'connected') {
+    showFollowError('Connect to a relay first.');
+    return;
+  }
+
+  const pubkey = followPubkeyInput.value.trim().toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(pubkey)) {
+    showFollowError('Must be a 64-character hex public key.');
+    return;
+  }
+  if (store.follows.find(f => f.pubkey === pubkey)) {
+    showFollowError('Already following this key.');
+    return;
+  }
+
+  followError.hidden = true;
+  store.addFollow({ pubkey, relay: '', petname: '' });
+  followPubkeyInput.value = '';
+
+  try {
+    await publishFollowList();
+    subscribeToFeed();
+  } catch (err) {
+    showFollowError(`Saved locally — relay error: ${err.message}`);
+  }
+});
+
+async function handleUnfollow(pubkey) {
+  store.removeFollow(pubkey);
+  try {
+    await publishFollowList();
+    subscribeToFeed();
+  } catch {
+    // Ignore relay error for unfollow
+  }
+}
 
 // ── Post ──────────────────────────────────────────────────────────────────────
 
@@ -209,9 +293,83 @@ postBtn.addEventListener('click', async () => {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+function subscribeToFeed() {
+  if (feedSubId) relay.unsubscribe(feedSubId);
+  feedSubId = crypto.randomUUID();
+  store.clearEvents();
+  feedStatus.textContent = 'Loading events…';
+
+  const hasFollows = store.follows.length > 0 && store.keys;
+  const filter = hasFollows
+    ? { kinds: [1], authors: store.follows.map(f => f.pubkey), limit: 20 }
+    : { kinds: [1], limit: 20 };
+
+  relay.subscribe(feedSubId, [filter]);
+}
+
+async function publishFollowList() {
+  const tags = store.follows.map(f => ['p', f.pubkey, f.relay, f.petname]);
+  const event = createEvent({
+    privkeyHex: store.keys.privkeyHex,
+    pubkeyHex: store.keys.pubkeyHex,
+    kind: 3,
+    tags,
+    content: '',
+  });
+  return relay.publish(event);
+}
+
+function handleFollowListEvent(event) {
+  const follows = event.tags
+    .filter(t => t[0] === 'p' && /^[0-9a-f]{64}$/.test(t[1]))
+    .map(t => ({ pubkey: t[1], relay: t[2] || '', petname: t[3] || '' }));
+  store.setFollows(follows);
+}
+
+function renderFollows(follows) {
+  followsList.innerHTML = '';
+  for (const f of follows) {
+    followsList.appendChild(renderFollowItem(f));
+  }
+}
+
+function renderFollowItem(f) {
+  const item = document.createElement('div');
+  item.className = 'follow-item';
+
+  const info = document.createElement('div');
+  info.className = 'follow-info';
+
+  const pubkeyEl = document.createElement('span');
+  pubkeyEl.className = 'follow-pubkey';
+  pubkeyEl.textContent = f.pubkey.slice(0, 12) + '…';
+  pubkeyEl.title = f.pubkey;
+  info.appendChild(pubkeyEl);
+
+  if (f.petname) {
+    const petnameEl = document.createElement('span');
+    petnameEl.className = 'follow-petname';
+    petnameEl.textContent = f.petname; // safe — textContent
+    info.appendChild(petnameEl);
+  }
+
+  const unfollowBtn = document.createElement('button');
+  unfollowBtn.className = 'btn-unfollow';
+  unfollowBtn.textContent = 'Unfollow';
+  unfollowBtn.addEventListener('click', () => handleUnfollow(f.pubkey));
+
+  item.append(info, unfollowBtn);
+  return item;
+}
+
 function setPostResult(msg, cls) {
   postResult.textContent = msg;
   postResult.className = 'result-msg ' + cls;
+}
+
+function showFollowError(msg) {
+  followError.textContent = msg;
+  followError.hidden = false;
 }
 
 function renderEvent(event) {
@@ -225,6 +383,12 @@ function renderEvent(event) {
   pubkey.className = 'event-pubkey';
   pubkey.textContent = event.pubkey.slice(0, 12) + '…';
   pubkey.title = event.pubkey;
+
+  // Show petname if we follow this author
+  const follow = store.follows.find(f => f.pubkey === event.pubkey);
+  if (follow?.petname) {
+    pubkey.textContent = follow.petname;
+  }
 
   const time = document.createElement('span');
   time.className = 'event-time';

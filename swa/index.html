@@ -80,6 +80,19 @@
       <div id="relay-notice" class="notice-msg" hidden></div>
     </section>
 
+    <section id="following-panel" class="panel">
+      <h2>Following</h2>
+      <div class="field-group">
+        <div class="input-row">
+          <input id="follow-pubkey" type="text" placeholder="Public key (64-char hex)" autocomplete="off">
+          <button id="follow-btn">Follow</button>
+        </div>
+        <div id="follow-error" class="error-msg" hidden></div>
+      </div>
+      <div id="follows-status" class="feed-status"></div>
+      <div id="follows-list" class="follows-list"></div>
+    </section>
+
     <section id="post-panel" class="panel">
       <h2>Post</h2>
       <div class="field-group">

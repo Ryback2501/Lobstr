@@ -15,6 +15,7 @@ export const store = {
   relayStatus: 'disconnected',
   events: [],
   subscriptionId: null,
+  follows: [], // [{ pubkey, relay, petname }]
 
   on,
 
@@ -53,5 +54,21 @@ export const store = {
   clearEvents() {
     this.events = [];
     emit('events', this.events);
+  },
+
+  setFollows(entries) {
+    this.follows = entries;
+    emit('follows', entries);
+  },
+
+  addFollow(entry) {
+    if (this.follows.find(f => f.pubkey === entry.pubkey)) return;
+    this.follows = [...this.follows, entry];
+    emit('follows', this.follows);
+  },
+
+  removeFollow(pubkey) {
+    this.follows = this.follows.filter(f => f.pubkey !== pubkey);
+    emit('follows', this.follows);
   },
 };

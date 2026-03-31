@@ -400,3 +400,54 @@ details[open] > summary::before {
   word-break: break-word;
   line-height: 1.55;
 }
+
+/* ── Follow list ── */
+
+.follows-list {
+  display: flex;
+  flex-direction: column;
+  margin-top: 0.25rem;
+}
+
+.follow-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.follow-item:last-child {
+  border-bottom: none;
+}
+
+.follow-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.follow-pubkey {
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 0.72rem;
+  color: var(--accent);
+}
+
+.follow-petname {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.btn-unfollow {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.6rem;
+  flex-shrink: 0;
+  color: var(--error);
+  border-color: var(--error);
+}
+
+.btn-unfollow:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
