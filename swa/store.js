@@ -39,13 +39,38 @@ export const store = {
   },
 
   addEvent(event) {
-    if (this.events.find(e => e.id === event.id)) return;
+    const isReplaceable = event.kind === 0 || event.kind === 3
+      || (event.kind >= 10000 && event.kind < 20000);
+    const isAddressable = event.kind >= 30000 && event.kind < 40000;
+
+    if (isReplaceable) {
+      const idx = this.events.findIndex(
+        e => e.pubkey === event.pubkey && e.kind === event.kind
+      );
+      if (idx !== -1) {
+        if (event.created_at <= this.events[idx].created_at) return;
+        this.events.splice(idx, 1);
+      }
+    } else if (isAddressable) {
+      const dTag = event.tags.find(t => t[0] === 'd')?.[1] ?? '';
+      const idx = this.events.findIndex(e => {
+        const existingD = e.tags.find(t => t[0] === 'd')?.[1] ?? '';
+        return e.pubkey === event.pubkey && e.kind === event.kind && existingD === dTag;
+      });
+      if (idx !== -1) {
+        if (event.created_at <= this.events[idx].created_at) return;
+        this.events.splice(idx, 1);
+      }
+    } else {
+      if (this.events.find(e => e.id === event.id)) return;
+    }
+
     // Insert sorted by created_at descending
-    const idx = this.events.findIndex(e => e.created_at < event.created_at);
-    if (idx === -1) {
+    const insertIdx = this.events.findIndex(e => e.created_at < event.created_at);
+    if (insertIdx === -1) {
       this.events.push(event);
     } else {
-      this.events.splice(idx, 0, event);
+      this.events.splice(insertIdx, 0, event);
     }
     emit('events', this.events);
   },
