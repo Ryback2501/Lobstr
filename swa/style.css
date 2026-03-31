@@ -361,6 +361,47 @@ details[open] > summary::before {
   color: var(--muted);
 }
 
+.feed-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.feed-header h2 {
+  margin-bottom: 0;
+}
+
+.feed-tabs {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.feed-tabs[hidden] {
+  display: none;
+}
+
+.tab-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 500;
+  padding: 0.25rem 0.7rem;
+}
+
+.tab-btn:hover {
+  background: var(--surface2);
+  color: var(--text);
+}
+
+.tab-btn.active {
+  background: var(--surface2);
+  border-color: var(--border);
+  color: var(--text);
+}
+
 .feed-status {
   font-size: 0.85rem;
   color: var(--muted);
@@ -379,8 +420,27 @@ details[open] > summary::before {
 .event-meta {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 0.5rem;
   margin-bottom: 0.35rem;
+}
+
+.event-meta-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.btn-follow-feed {
+  font-size: 0.7rem;
+  padding: 0.2rem 0.55rem;
+  flex-shrink: 0;
+}
+
+.btn-follow-feed:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .event-pubkey {

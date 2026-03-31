@@ -106,7 +106,13 @@
     </section>
 
     <section id="feed-panel" class="panel">
-      <h2>Feed</h2>
+      <div class="feed-header">
+        <h2>Feed</h2>
+        <div id="feed-tabs" class="feed-tabs" hidden>
+          <button id="tab-all" class="tab-btn active">All</button>
+          <button id="tab-following" class="tab-btn">Following</button>
+        </div>
+      </div>
       <div id="feed-status" class="feed-status">Connect to a relay to see events.</div>
       <div id="events-list"></div>
     </section>

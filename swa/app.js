@@ -36,6 +36,9 @@ const postResult = document.getElementById('post-result');
 
 const feedStatus = document.getElementById('feed-status');
 const eventsList = document.getElementById('events-list');
+const feedTabs = document.getElementById('feed-tabs');
+const tabAll = document.getElementById('tab-all');
+const tabFollowing = document.getElementById('tab-following');
 
 const infoBtn = document.getElementById('info-btn');
 const infoModal = document.getElementById('info-modal');
@@ -48,6 +51,7 @@ const modalNipsList = document.getElementById('modal-nips-list');
 let relay = null;
 let followsSubId = null;
 let feedSubId = null;
+let activeTab = 'all';
 
 // ── Info modal ────────────────────────────────────────────────────────────────
 
@@ -63,6 +67,22 @@ infoBtn.addEventListener('click', () => { infoModal.hidden = false; });
 modalCloseBtn.addEventListener('click', () => { infoModal.hidden = true; });
 infoModal.addEventListener('click', (e) => { if (e.target === infoModal) infoModal.hidden = true; });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') infoModal.hidden = true; });
+
+// ── Feed tabs ─────────────────────────────────────────────────────────────────
+
+tabAll.addEventListener('click', () => {
+  if (activeTab === 'all') return;
+  activeTab = 'all';
+  updateTabUI();
+  subscribeToFeed();
+});
+
+tabFollowing.addEventListener('click', () => {
+  if (activeTab === 'following') return;
+  activeTab = 'following';
+  updateTabUI();
+  subscribeToFeed();
+});
 
 // ── Initialization ────────────────────────────────────────────────────────────
 
@@ -108,6 +128,7 @@ store.on('relayStatus', (status) => {
     connectBtn.textContent = 'Connect';
     followsSubId = null;
     feedSubId = null;
+    updateFeedTabs();
     if (status === 'disconnected') {
       feedStatus.textContent = 'Connect to a relay to see events.';
       followsStatus.textContent = 'Connect with an identity to load your follow list.';
@@ -118,6 +139,7 @@ store.on('relayStatus', (status) => {
 store.on('follows', (follows) => {
   followsStatus.textContent = follows.length === 0 ? 'Not following anyone yet.' : '';
   renderFollows(follows);
+  updateFeedTabs();
 });
 
 store.on('events', (events) => {
@@ -242,6 +264,7 @@ followBtn.addEventListener('click', async () => {
 
 async function handleUnfollow(pubkey) {
   store.removeFollow(pubkey);
+  rerenderFeed();
   try {
     await publishFollowList();
     subscribeToFeed();
@@ -299,12 +322,26 @@ function subscribeToFeed() {
   store.clearEvents();
   feedStatus.textContent = 'Loading events…';
 
-  const hasFollows = store.follows.length > 0 && store.keys;
-  const filter = hasFollows
+  const useFollowingFilter = activeTab === 'following' && store.follows.length > 0 && store.keys;
+  const filter = useFollowingFilter
     ? { kinds: [1], authors: store.follows.map(f => f.pubkey), limit: 20 }
     : { kinds: [1], limit: 20 };
 
   relay.subscribe(feedSubId, [filter]);
+}
+
+function updateFeedTabs() {
+  const show = !!store.keys && store.relayStatus === 'connected' && store.follows.length > 0;
+  feedTabs.hidden = !show;
+  if (!show && activeTab === 'following') {
+    activeTab = 'all';
+    updateTabUI();
+  }
+}
+
+function updateTabUI() {
+  tabAll.classList.toggle('active', activeTab === 'all');
+  tabFollowing.classList.toggle('active', activeTab === 'following');
 }
 
 async function publishFollowList() {
@@ -379,22 +416,42 @@ function renderEvent(event) {
   const meta = document.createElement('div');
   meta.className = 'event-meta';
 
-  const pubkey = document.createElement('span');
-  pubkey.className = 'event-pubkey';
-  pubkey.textContent = event.pubkey.slice(0, 12) + '…';
-  pubkey.title = event.pubkey;
+  const metaLeft = document.createElement('div');
+  metaLeft.className = 'event-meta-left';
 
-  // Show petname if we follow this author
+  const pubkeyEl = document.createElement('span');
+  pubkeyEl.className = 'event-pubkey';
+  pubkeyEl.title = event.pubkey;
+
   const follow = store.follows.find(f => f.pubkey === event.pubkey);
-  if (follow?.petname) {
-    pubkey.textContent = follow.petname;
-  }
+  pubkeyEl.textContent = follow?.petname || (event.pubkey.slice(0, 12) + '…');
 
   const time = document.createElement('span');
   time.className = 'event-time';
   time.textContent = formatTime(event.created_at);
 
-  meta.append(pubkey, time);
+  metaLeft.append(pubkeyEl, time);
+  meta.appendChild(metaLeft);
+
+  const isOwnPost = store.keys?.pubkeyHex === event.pubkey;
+  if (!isOwnPost) {
+    const alreadyFollowing = !!follow;
+    const followEventBtn = document.createElement('button');
+    followEventBtn.className = 'btn-follow-feed';
+    followEventBtn.textContent = alreadyFollowing ? 'Following' : 'Follow';
+    followEventBtn.disabled = alreadyFollowing;
+
+    followEventBtn.addEventListener('click', async () => {
+      store.addFollow({ pubkey: event.pubkey, relay: '', petname: '' });
+      rerenderFeed();
+      try {
+        await publishFollowList();
+        subscribeToFeed();
+      } catch { /* ignore relay error */ }
+    });
+
+    meta.appendChild(followEventBtn);
+  }
 
   const content = document.createElement('div');
   content.className = 'event-content';
@@ -402,6 +459,13 @@ function renderEvent(event) {
 
   card.append(meta, content);
   return card;
+}
+
+function rerenderFeed() {
+  eventsList.innerHTML = '';
+  for (const event of store.events) {
+    eventsList.appendChild(renderEvent(event));
+  }
 }
 
 function formatTime(unixSec) {
