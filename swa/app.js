@@ -254,6 +254,22 @@ connectBtn.addEventListener('click', async () => {
         else fetchMissingMetadata();
       }
     },
+    onClosed: (subId, message) => {
+      const label = subId === feedSubId ? 'feed'
+        : subId === ownProfileSubId ? 'profile'
+        : subId === metadataSubId ? 'metadata'
+        : subId === idSearchSubId ? 'search'
+        : 'unknown';
+      relayNotice.textContent = `Relay closed ${label} subscription: ${message || 'no reason given'}`;
+      relayNotice.hidden = false;
+
+      if (subId === feedSubId) {
+        feedStatus.textContent = 'Feed closed by relay. Retrying in 5s…';
+        setTimeout(() => {
+          if (store.relayStatus === 'connected') subscribeToFeed();
+        }, 5000);
+      }
+    },
     onNotice: (msg) => {
       relayNotice.textContent = msg;
       relayNotice.hidden = false;
