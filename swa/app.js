@@ -37,6 +37,7 @@ const postResult = document.getElementById('post-result');
 const feedStatus = document.getElementById('feed-status');
 const eventsList = document.getElementById('events-list');
 const feedSinceSelect = document.getElementById('feed-since');
+const feedUntilInput = document.getElementById('feed-until');
 const feedIdSearch = document.getElementById('feed-id-search');
 const feedIdSearchBtn = document.getElementById('feed-id-search-btn');
 
@@ -54,6 +55,7 @@ let feedSubId = null;
 let metadataSubId = null;
 let idSearchSubId = null;
 let sinceFilter = 0; // seconds offset from now; 0 = no filter
+let untilFilter = 0; // unix timestamp; 0 = no filter
 
 // ── Info modal ────────────────────────────────────────────────────────────────
 
@@ -204,6 +206,13 @@ feedSinceSelect.addEventListener('change', () => {
   if (store.relayStatus === 'connected') subscribeToFeed();
 });
 
+feedUntilInput.addEventListener('change', () => {
+  untilFilter = feedUntilInput.value
+    ? Math.floor(new Date(feedUntilInput.value).getTime() / 1000)
+    : 0;
+  if (store.relayStatus === 'connected') subscribeToFeed();
+});
+
 feedIdSearchBtn.addEventListener('click', () => {
   const id = feedIdSearch.value.trim().toLowerCase();
   if (!/^[0-9a-f]{64}$/.test(id)) {
@@ -335,6 +344,7 @@ function subscribeToFeed() {
 
   const filter = { kinds: [1], limit: 20 };
   if (sinceFilter > 0) filter.since = Math.floor(Date.now() / 1000) - sinceFilter;
+  if (untilFilter > 0) filter.until = untilFilter;
 
   relay.subscribe(feedSubId, [filter]);
 }
