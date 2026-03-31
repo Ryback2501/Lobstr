@@ -653,6 +653,28 @@ details[open] > summary::before {
   color: var(--muted);
 }
 
+.petname-input {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid transparent;
+  border-radius: 0;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 0.78rem;
+  padding: 0.1rem 0;
+  width: 100%;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.petname-input:focus {
+  border-bottom-color: var(--accent);
+}
+
+.petname-input::placeholder {
+  color: var(--border);
+}
+
 .btn-unfollow {
   font-size: 0.75rem;
   padding: 0.25rem 0.6rem;

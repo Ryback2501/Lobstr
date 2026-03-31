@@ -439,12 +439,22 @@ function renderFollowItem(f) {
   nameEl.title = f.pubkey;
   info.appendChild(nameEl);
 
-  if (profile?.about) {
-    const aboutEl = document.createElement('span');
-    aboutEl.className = 'follow-petname';
-    aboutEl.textContent = profile.about;
-    info.appendChild(aboutEl);
+  const petnameInput = document.createElement('input');
+  petnameInput.type = 'text';
+  petnameInput.className = 'petname-input';
+  petnameInput.value = f.petname || '';
+  petnameInput.placeholder = 'Add petname…';
+
+  async function savePetname() {
+    const newPetname = petnameInput.value.trim();
+    if (newPetname === (f.petname || '')) return;
+    f.petname = newPetname;
+    try { await publishFollowList(); } catch { /* ignore */ }
   }
+
+  petnameInput.addEventListener('blur', savePetname);
+  petnameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') petnameInput.blur(); });
+  info.appendChild(petnameInput);
 
   const unfollowBtn = document.createElement('button');
   unfollowBtn.className = 'btn-unfollow';
