@@ -64,19 +64,33 @@
       </div>
     </section>
 
-    <section id="relay-panel" class="panel">
-      <h2>Relay</h2>
+    <section id="profile-panel" class="panel">
+      <h2>Profile</h2>
       <div class="field-group">
-        <label for="relay-url">Relay URL</label>
-        <div class="input-row">
-          <input id="relay-url" type="text" placeholder="wss://relay.damus.io" autocomplete="off">
-          <button id="connect-btn" class="primary">Connect</button>
-        </div>
+        <label for="profile-name">Display name</label>
+        <input id="profile-name" type="text" placeholder="Your name" autocomplete="off">
       </div>
-      <div class="status-row">
-        <span id="status-dot" class="dot disconnected"></span>
-        <span id="status-label">Disconnected</span>
+      <div class="field-group">
+        <label for="profile-about">About</label>
+        <textarea id="profile-about" rows="2" placeholder="Short bio"></textarea>
       </div>
+      <div class="field-group">
+        <label for="profile-picture">Picture URL</label>
+        <input id="profile-picture" type="text" placeholder="https://..." autocomplete="off">
+      </div>
+      <div class="btn-row">
+        <button id="profile-save-btn" class="primary">Save profile</button>
+        <span id="profile-result" class="result-msg"></span>
+      </div>
+    </section>
+
+    <section id="relay-panel" class="panel">
+      <h2>Relays</h2>
+      <div class="relay-add-row">
+        <input id="relay-add-input" type="text" placeholder="wss://relay.example.com" autocomplete="off">
+        <button id="relay-add-btn">Add</button>
+      </div>
+      <div id="relay-list"></div>
       <div id="relay-notice" class="notice-msg" hidden></div>
     </section>
 
@@ -89,7 +103,7 @@
         </div>
         <div id="follow-error" class="error-msg" hidden></div>
       </div>
-      <div id="follows-status" class="feed-status"></div>
+      <div id="follows-status" class="feed-status">Connect with an identity to load your follow list.</div>
       <div id="follows-list" class="follows-list"></div>
     </section>
 
@@ -106,15 +120,34 @@
     </section>
 
     <section id="feed-panel" class="panel">
-      <div class="feed-header">
-        <h2>Feed</h2>
-        <div id="feed-tabs" class="feed-tabs" hidden>
-          <button id="tab-all" class="tab-btn active">All</button>
-          <button id="tab-following" class="tab-btn">Following</button>
+      <h2>Feed</h2>
+      <div id="feed-header" class="feed-header" hidden>
+        <button id="tab-feed" class="tab-btn active">Feed</button>
+        <button id="tab-following" class="tab-btn" hidden>Following</button>
+        <button id="tab-mentions" class="tab-btn" hidden>Mentions</button>
+      </div>
+      <div id="feed-filters" class="feed-filters">
+        <select id="feed-since">
+          <option value="0">All time</option>
+          <option value="3600">Last hour</option>
+          <option value="86400">Last 24h</option>
+          <option value="604800">Last week</option>
+        </select>
+        <select id="feed-until">
+          <option value="0">No end limit</option>
+          <option value="3600">Until 1h ago</option>
+          <option value="86400">Until 1d ago</option>
+          <option value="604800">Until 1w ago</option>
+        </select>
+        <div class="input-row" style="flex:1">
+          <input id="feed-id-search" type="text" placeholder="Find event by ID (64-char hex)" autocomplete="off">
+          <button id="feed-id-search-btn">Find</button>
         </div>
       </div>
       <div id="feed-status" class="feed-status">Connect to a relay to see events.</div>
       <div id="events-list"></div>
+      <div id="mentions-status" class="feed-status" hidden>No mentions yet.</div>
+      <div id="mentions-list" hidden></div>
     </section>
   </main>
 
