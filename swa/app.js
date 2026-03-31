@@ -488,15 +488,27 @@ function renderEvent(event) {
 
   meta.append(avatar, authorEl, time);
 
-  // Reply indicator — shown when this event references another event via e tag
+  // Reply indicator — shown when this event references another event via e or a tag
   const eTags = event.tags.filter(t => t[0] === 'e');
+  const aTags = event.tags.filter(t => t[0] === 'a');
+  let refLabel = null;
+
   if (eTags.length > 0) {
     const refId = eTags[eTags.length - 1][1];
     const refEvent = store.events.find(e => e.id === refId);
     const refProfile = refEvent ? store.profiles.get(refEvent.pubkey) : null;
-    const refLabel = refProfile?.name || refProfile?.display_name
+    refLabel = refProfile?.name || refProfile?.display_name
       || (refEvent ? refEvent.pubkey.slice(0, 12) + '…' : refId.slice(0, 12) + '…');
+  } else if (aTags.length > 0) {
+    // a tag format: "<kind>:<pubkey>:<d-tag>"
+    const parts = (aTags[aTags.length - 1][1] || '').split(':');
+    const refPubkey = parts[1] || '';
+    const refProfile = refPubkey ? store.profiles.get(refPubkey) : null;
+    refLabel = refProfile?.name || refProfile?.display_name
+      || (refPubkey ? refPubkey.slice(0, 12) + '…' : aTags[aTags.length - 1][1].slice(0, 16) + '…');
+  }
 
+  if (refLabel !== null) {
     const replyIndicator = document.createElement('div');
     replyIndicator.className = 'reply-indicator';
     replyIndicator.textContent = `↩ ${refLabel}`;
