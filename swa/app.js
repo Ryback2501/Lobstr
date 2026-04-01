@@ -1098,7 +1098,7 @@ function fetchMissingMetadata() {
   if (!unknown.length) return;
   if (metadataSubId) unsubscribeAll(metadataSubId);
   metadataSubId = crypto.randomUUID();
-  subscribeAll(metadataSubId, [{ kinds: [0], authors: unknown }]);
+  subscribeAll(metadataSubId, [{ kinds: [0], authors: unknown, limit: unknown.length }]);
 }
 
 function rerenderRelayList() {
