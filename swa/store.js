@@ -1,3 +1,5 @@
+const MAX_EVENTS = 200;
+
 const listeners = new Map();
 
 function on(event, fn) {
@@ -76,6 +78,7 @@ export const store = {
     } else {
       this.events.splice(insertIdx, 0, event);
     }
+    if (this.events.length > MAX_EVENTS) this.events.length = MAX_EVENTS;
     emit('eventAdded', { event, insertIdx: insertIdx === -1 ? this.events.length - 1 : insertIdx });
   },
 

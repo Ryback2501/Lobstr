@@ -156,6 +156,9 @@ store.on('eventAdded', ({ event, insertIdx }) => {
   const card = renderEvent(event);
   const ref = eventsList.children[insertIdx];
   eventsList.insertBefore(card, ref ?? null);
+  while (eventsList.children.length > store.events.length) {
+    eventsList.lastChild.remove();
+  }
 });
 
 store.on('profiles', () => {
