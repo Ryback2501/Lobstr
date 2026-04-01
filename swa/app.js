@@ -424,10 +424,10 @@ function renderFollowItem(f) {
     const img = document.createElement('img');
     img.src = profile.picture;
     img.alt = displayName;
-    img.onerror = () => { img.remove(); avatar.textContent = displayName[0].toUpperCase(); };
+    img.onerror = () => { img.remove(); avatar.textContent = (displayName[0] || '?').toUpperCase(); };
     avatar.appendChild(img);
   } else {
-    avatar.textContent = displayName[0].toUpperCase();
+    avatar.textContent = (displayName[0] || '?').toUpperCase();
     avatar.style.background = pubkeyColor(f.pubkey);
   }
 
@@ -887,10 +887,10 @@ function renderEvent(event) {
     const img = document.createElement('img');
     img.src = profile.picture;
     img.alt = displayName;
-    img.onerror = () => { img.remove(); avatar.textContent = displayName[0].toUpperCase(); };
+    img.onerror = () => { img.remove(); avatar.textContent = (displayName[0] || '?').toUpperCase(); };
     avatar.appendChild(img);
   } else {
-    avatar.textContent = displayName[0].toUpperCase();
+    avatar.textContent = (displayName[0] || '?').toUpperCase();
     avatar.style.background = pubkeyColor(event.pubkey);
   }
 
@@ -1104,10 +1104,10 @@ function renderReply(event) {
     const img = document.createElement('img');
     img.src = profile.picture;
     img.alt = displayName;
-    img.onerror = () => { img.remove(); avatar.textContent = displayName[0].toUpperCase(); };
+    img.onerror = () => { img.remove(); avatar.textContent = (displayName[0] || '?').toUpperCase(); };
     avatar.appendChild(img);
   } else {
-    avatar.textContent = displayName[0].toUpperCase();
+    avatar.textContent = (displayName[0] || '?').toUpperCase();
     avatar.style.background = pubkeyColor(event.pubkey);
   }
 
