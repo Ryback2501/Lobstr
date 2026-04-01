@@ -167,7 +167,7 @@ store.on('profiles', () => {
 });
 
 store.on('mentions', (events) => {
-  mentionsStatus.hidden = events.length > 0;
+  mentionsStatus.hidden = feedActiveTab !== 'mentions' || events.length > 0;
   mentionsList.innerHTML = '';
   for (const event of events) {
     mentionsList.appendChild(renderEvent(event));
