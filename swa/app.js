@@ -205,14 +205,7 @@ copyPrivkeyBtn.addEventListener('click', () => copyToClipboard(privkeyDisplay.va
 // ── Profile ───────────────────────────────────────────────────────────────────
 
 profileSaveBtn.addEventListener('click', async () => {
-  if (!store.keys) {
-    setProfileResult('Generate or import a keypair first.', 'err');
-    return;
-  }
-  if (!isAnyConnected()) {
-    setProfileResult('Connect to a relay first.', 'err');
-    return;
-  }
+  if (!requireKeysAndRelay((msg) => setProfileResult(msg, 'err'))) return;
 
   const metadata = {
     name: profileNameInput.value.trim(),
@@ -224,13 +217,7 @@ profileSaveBtn.addEventListener('click', async () => {
   setProfileResult('Saving…', '');
 
   try {
-    const event = createEvent({
-      privkeyHex: store.keys.privkeyHex,
-      pubkeyHex: store.keys.pubkeyHex,
-      kind: 0,
-      tags: [],
-      content: JSON.stringify(metadata),
-    });
+    const event = createOwnEvent({ kind: 0, tags: [], content: JSON.stringify(metadata) });
     await publishToAll(event);
     store.setProfile(store.keys.pubkeyHex, { ...metadata, _created_at: event.created_at });
     setProfileResult('Saved.', 'ok');
@@ -291,7 +278,7 @@ relayAddInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') addRel
 function addRelay() {
   const url = relayAddInput.value.trim();
   if (!url) return;
-  if (!url.startsWith('wss://') && !url.startsWith('ws://')) {
+  if (!isValidRelayUrl(url)) {
     relayNotice.textContent = 'Relay URL must start with wss:// or ws://';
     relayNotice.hidden = false;
     return;
@@ -352,14 +339,7 @@ function removeRelay(url) {
 // ── Following ─────────────────────────────────────────────────────────────────
 
 followBtn.addEventListener('click', async () => {
-  if (!store.keys) {
-    showFollowError('Generate or import a keypair first.');
-    return;
-  }
-  if (!isAnyConnected()) {
-    showFollowError('Connect to a relay first.');
-    return;
-  }
+  if (!requireKeysAndRelay(showFollowError)) return;
 
   const pubkey = followPubkeyInput.value.trim().toLowerCase();
   if (!/^[0-9a-f]{64}$/.test(pubkey)) {
@@ -393,13 +373,7 @@ async function handleUnfollow(pubkey) {
 
 async function publishFollowList() {
   const tags = store.follows.map(f => ['p', f.pubkey, f.relay, f.petname]);
-  const event = createEvent({
-    privkeyHex: store.keys.privkeyHex,
-    pubkeyHex: store.keys.pubkeyHex,
-    kind: 3,
-    tags,
-    content: '',
-  });
+  const event = createOwnEvent({ kind: 3, tags, content: '' });
   return publishToAll(event);
 }
 
@@ -415,6 +389,10 @@ function renderFollows(follows) {
   for (const f of follows) {
     followsList.appendChild(renderFollowItem(f));
   }
+}
+
+function getDisplayName(profile, fallback) {
+  return profile?.name || profile?.display_name || fallback;
 }
 
 function createAvatar(profile, displayName, pubkey) {
@@ -438,7 +416,7 @@ function renderFollowItem(f) {
   item.className = 'follow-item';
 
   const profile = store.profiles.get(f.pubkey);
-  const displayName = profile?.name || profile?.display_name || f.petname || (f.pubkey.slice(0, 12) + '…');
+  const displayName = getDisplayName(profile, f.petname || (f.pubkey.slice(0, 12) + '…'));
 
   const avatar = createAvatar(profile, displayName, f.pubkey);
 
@@ -464,8 +442,7 @@ function renderFollowItem(f) {
     try { await publishFollowList(); } catch { /* ignore */ }
   }
 
-  petnameInput.addEventListener('blur', savePetname);
-  petnameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') petnameInput.blur(); });
+  bindSaveOnBlurOrEnter(petnameInput, savePetname);
 
   const relayInput = document.createElement('input');
   relayInput.type = 'text';
@@ -476,7 +453,7 @@ function renderFollowItem(f) {
   async function saveRelay() {
     const newRelay = relayInput.value.trim();
     if (newRelay === (f.relay || '')) return;
-    if (newRelay && !newRelay.startsWith('wss://') && !newRelay.startsWith('ws://')) {
+    if (newRelay && !isValidRelayUrl(newRelay)) {
       relayInput.value = f.relay || '';
       return;
     }
@@ -484,8 +461,7 @@ function renderFollowItem(f) {
     try { await publishFollowList(); } catch { /* ignore */ }
   }
 
-  relayInput.addEventListener('blur', saveRelay);
-  relayInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') relayInput.blur(); });
+  bindSaveOnBlurOrEnter(relayInput, saveRelay);
 
   const inputRow = document.createElement('div');
   inputRow.className = 'input-row';
@@ -513,14 +489,7 @@ postContent.addEventListener('input', () => {
 });
 
 postBtn.addEventListener('click', async () => {
-  if (!store.keys) {
-    setPostResult('Generate or import a keypair first.', 'err');
-    return;
-  }
-  if (!isAnyConnected()) {
-    setPostResult('Connect to a relay first.', 'err');
-    return;
-  }
+  if (!requireKeysAndRelay((msg) => setPostResult(msg, 'err'))) return;
   const content = postContent.value.trim();
   if (!content) return;
 
@@ -528,13 +497,7 @@ postBtn.addEventListener('click', async () => {
   setPostResult('Publishing…', '');
 
   try {
-    const event = createEvent({
-      privkeyHex: store.keys.privkeyHex,
-      pubkeyHex: store.keys.pubkeyHex,
-      kind: 1,
-      tags: [],
-      content,
-    });
+    const event = createOwnEvent({ kind: 1, tags: [], content });
     await publishToAll(event);
     store.addEvent(event);
     postContent.value = '';
@@ -871,15 +834,32 @@ function pubkeyColor(pubkey) {
   return colors[parseInt(pubkey.slice(0, 2), 16) % colors.length];
 }
 
-function setPostResult(msg, cls) {
-  postResult.textContent = msg;
-  postResult.className = 'result-msg ' + cls;
+function requireKeysAndRelay(errorFn) {
+  if (!store.keys) { errorFn('Generate or import a keypair first.'); return false; }
+  if (!isAnyConnected()) { errorFn('Connect to a relay first.'); return false; }
+  return true;
 }
 
-function setProfileResult(msg, cls) {
-  profileResult.textContent = msg;
-  profileResult.className = 'result-msg ' + cls;
+function createOwnEvent({ kind, tags, content }) {
+  return createEvent({ privkeyHex: store.keys.privkeyHex, pubkeyHex: store.keys.pubkeyHex, kind, tags, content });
 }
+
+function isValidRelayUrl(url) {
+  return url.startsWith('wss://') || url.startsWith('ws://');
+}
+
+function bindSaveOnBlurOrEnter(input, fn) {
+  input.addEventListener('blur', fn);
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') input.blur(); });
+}
+
+function setResult(el, msg, cls) {
+  el.textContent = msg;
+  el.className = 'result-msg ' + cls;
+}
+
+function setPostResult(msg, cls) { setResult(postResult, msg, cls); }
+function setProfileResult(msg, cls) { setResult(profileResult, msg, cls); }
 
 function renderEvent(event) {
   const card = document.createElement('div');
@@ -889,7 +869,7 @@ function renderEvent(event) {
   meta.className = 'event-meta';
 
   const profile = store.profiles.get(event.pubkey);
-  const displayName = profile?.name || profile?.display_name || (event.pubkey.slice(0, 12) + '…');
+  const displayName = getDisplayName(profile, event.pubkey.slice(0, 12) + '…');
 
   const avatar = createAvatar(profile, displayName, event.pubkey);
 
@@ -1016,7 +996,7 @@ function createReplyForm(parentEvent) {
   form.hidden = true;
 
   const profile = store.profiles.get(parentEvent.pubkey);
-  const name = profile?.name || profile?.display_name || (parentEvent.pubkey.slice(0, 12) + '…');
+  const name = getDisplayName(profile, parentEvent.pubkey.slice(0, 12) + '…');
 
   const label = document.createElement('div');
   label.className = 'reply-form-label';
@@ -1067,13 +1047,7 @@ function createReplyForm(parentEvent) {
     resultMsg.className = 'result-msg';
 
     try {
-      const event = createEvent({
-        privkeyHex: store.keys.privkeyHex,
-        pubkeyHex: store.keys.pubkeyHex,
-        kind: 1,
-        tags: [['e', parentEvent.id], ['p', parentEvent.pubkey]],
-        content,
-      });
+      const event = createOwnEvent({ kind: 1, tags: [['e', parentEvent.id], ['p', parentEvent.pubkey]], content });
       await publishToAll(event);
       store.addEvent(event);
       textarea.value = '';
@@ -1097,7 +1071,7 @@ function renderReply(event) {
   meta.className = 'event-meta';
 
   const profile = store.profiles.get(event.pubkey);
-  const displayName = profile?.name || profile?.display_name || (event.pubkey.slice(0, 12) + '…');
+  const displayName = getDisplayName(profile, event.pubkey.slice(0, 12) + '…');
 
   const avatar = createAvatar(profile, displayName, event.pubkey);
 
