@@ -3,7 +3,7 @@ import { RelayConnection } from './relay.js';
 import { store } from './store.js';
 
 const VERSION = '0.0.2';
-const SUPPORTED_NIPS = ['01', '02'];
+const SUPPORTED_NIPS = ['01', '02', '03'];
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 
@@ -70,6 +70,7 @@ let feedSubId = null;
 let metadataSubId = null;
 let idSearchSubId = null;
 let mentionsSubId = null;
+let attestationSubId = null;
 let feedRetryTimer = null;
 let sinceFilter = 0; // seconds offset from now; 0 = no filter
 let untilFilter = 0; // seconds offset from now; 0 = no filter
@@ -164,6 +165,15 @@ store.on('eventAdded', ({ event, insertIdx }) => {
 store.on('profiles', () => {
   rerenderFeed();
   renderFollows(store.follows);
+});
+
+store.on('attestation', (eventId) => {
+  for (const list of [eventsList, mentionsList]) {
+    const card = list.querySelector(`[data-event-id="${eventId}"]`);
+    if (card && !card.querySelector('.ots-badge')) {
+      card.querySelector('.event-meta-left')?.appendChild(createOtsBadge());
+    }
+  }
 });
 
 store.on('mentions', (events) => {
@@ -521,6 +531,8 @@ function handleEvent(subId, event) {
     handleFollowListEvent(event);
   } else if (subId === feedSubId || subId === idSearchSubId) {
     store.addEvent(event);
+  } else if (event.kind === 1040) {
+    handleAttestationEvent(event);
   } else if (subId === mentionsSubId) {
     store.addMention(event);
   } else if (replySubIdToContainer.has(subId)) {
@@ -545,6 +557,7 @@ function handleEOSE(subId) {
   } else if (subId === feedSubId) {
     if (store.events.length === 0) feedStatus.textContent = 'No events found.';
     fetchMissingMetadata();
+    subscribeAttestations();
   } else if (subId === idSearchSubId) {
     if (store.events.length === 0) feedStatus.textContent = 'Event not found.';
     else fetchMissingMetadata();
@@ -573,6 +586,7 @@ function handleClosed(url, subId, message) {
     : subId === metadataSubId ? 'metadata'
     : subId === idSearchSubId ? 'search'
     : subId === mentionsSubId ? 'mentions'
+    : subId === attestationSubId ? 'attestations'
     : replySubIdToContainer.has(subId) ? 'replies'
     : 'unknown';
   relayNotice.textContent = `[${hostname}] closed ${label} subscription: ${message || 'no reason given'}`;
@@ -628,6 +642,7 @@ function handleRelayStatus(url, status) {
     idSearchSubId = null;
     mentionsSubId = null;
     activeSubs.clear();
+    attestationSubId = null;
     replySubscriptions.clear();
     replySubIdToContainer.clear();
     replyEventIds.clear();
@@ -677,6 +692,7 @@ function setupSubscriptions() {
   feedSubId = null;
   metadataSubId = null;
   mentionsSubId = null;
+  attestationSubId = null;
   idSearchSubId = null;
 
   if (store.keys) {
@@ -740,6 +756,19 @@ function populateProfileForm(pubkey) {
   profileNameInput.value = profile.name || profile.display_name || '';
   profileAboutInput.value = profile.about || '';
   profilePictureInput.value = profile.picture || '';
+}
+
+function handleAttestationEvent(event) {
+  const refId = event.tags.find(t => t[0] === 'e')?.[1];
+  if (refId) store.setAttestation(refId, event.content);
+}
+
+function subscribeAttestations() {
+  const ids = store.events.map(e => e.id);
+  if (!ids.length) return;
+  if (attestationSubId) unsubscribeAll(attestationSubId);
+  attestationSubId = crypto.randomUUID();
+  subscribeAll(attestationSubId, [{ kinds: [1040], '#e': ids, limit: 50 }]);
 }
 
 function fetchMissingMetadata() {
@@ -853,6 +882,17 @@ function bindSaveOnBlurOrEnter(input, fn) {
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') input.blur(); });
 }
 
+function createOtsBadge() {
+  const badge = document.createElement('a');
+  badge.className = 'ots-badge';
+  badge.textContent = '⏱ OTS';
+  badge.title = 'OpenTimestamps attestation';
+  badge.href = 'https://ots.tools/';
+  badge.target = '_blank';
+  badge.rel = 'noopener noreferrer';
+  return badge;
+}
+
 function setResult(el, msg, cls) {
   el.textContent = msg;
   el.className = 'result-msg ' + cls;
@@ -864,6 +904,7 @@ function setProfileResult(msg, cls) { setResult(profileResult, msg, cls); }
 function renderEvent(event) {
   const card = document.createElement('div');
   card.className = 'event-card';
+  card.dataset.eventId = event.id;
 
   const meta = document.createElement('div');
   meta.className = 'event-meta';
@@ -885,6 +926,7 @@ function renderEvent(event) {
   const metaLeft = document.createElement('div');
   metaLeft.className = 'event-meta-left';
   metaLeft.append(avatar, authorEl, time);
+  if (store.attestations.has(event.id)) metaLeft.appendChild(createOtsBadge());
   meta.appendChild(metaLeft);
 
   const isOwnPost = store.keys?.pubkeyHex === event.pubkey;

@@ -658,6 +658,23 @@ details[open] > summary::before {
   padding: 0.3rem 0.5rem;
 }
 
+.ots-badge {
+  font-size: 0.68rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  text-decoration: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.ots-badge:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
 .btn-unfollow {
   font-size: 0.75rem;
   padding: 0.25rem 0.6rem;

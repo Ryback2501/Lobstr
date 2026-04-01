@@ -91,6 +91,14 @@ export const store = {
     emit('events', this.events);
   },
 
+  attestations: new Map(), // eventId → { raw: base64, received_at }
+
+  setAttestation(eventId, raw) {
+    if (this.attestations.has(eventId)) return; // first attestation wins
+    this.attestations.set(eventId, { raw, received_at: Math.floor(Date.now() / 1000) });
+    emit('attestation', eventId);
+  },
+
   profiles: new Map(), // pubkey → { name, about, picture, _created_at }
 
   setProfile(pubkey, metadata) {
