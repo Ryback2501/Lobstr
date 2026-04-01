@@ -70,6 +70,7 @@ let feedSubId = null;
 let metadataSubId = null;
 let idSearchSubId = null;
 let mentionsSubId = null;
+let feedRetryTimer = null;
 let sinceFilter = 0; // seconds offset from now; 0 = no filter
 let untilFilter = 0; // seconds offset from now; 0 = no filter
 let feedActiveTab = 'feed'; // 'feed' | 'following' | 'mentions'
@@ -599,9 +600,10 @@ function handleClosed(url, subId, message) {
   relayNotice.textContent = `[${hostname}] closed ${label} subscription: ${message || 'no reason given'}`;
   relayNotice.hidden = false;
 
-  if (subId === feedSubId) {
+  if (subId === feedSubId && !feedRetryTimer) {
     feedStatus.textContent = 'Feed closed by relay. Retrying in 5s…';
-    setTimeout(() => {
+    feedRetryTimer = setTimeout(() => {
+      feedRetryTimer = null;
       const entry = relays.get(url);
       if (entry?.status === 'connected' && entry.conn && activeSubs.has(feedSubId)) {
         entry.conn.subscribe(feedSubId, activeSubs.get(feedSubId));
@@ -651,6 +653,8 @@ function handleRelayStatus(url, status) {
     replySubscriptions.clear();
     replySubIdToContainer.clear();
     replyEventIds.clear();
+    clearTimeout(feedRetryTimer);
+    feedRetryTimer = null;
     feedStatus.textContent = 'Connect to a relay to see events.';
     followsStatus.textContent = 'Connect with an identity to load your follow list.';
     updateFeedTabs();
@@ -714,6 +718,8 @@ function setupSubscriptions() {
 }
 
 function subscribeToFeed() {
+  clearTimeout(feedRetryTimer);
+  feedRetryTimer = null;
   if (feedActiveTab === 'following' && store.follows.length === 0) {
     if (feedSubId) unsubscribeAll(feedSubId);
     feedSubId = null;
