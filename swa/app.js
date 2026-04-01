@@ -509,7 +509,12 @@ async function handleUnfollow(pubkey) {
 }
 
 async function publishFollowList() {
-  const tags = store.follows.map(f => ['p', f.pubkey, f.relay, f.petname]);
+  const tags = store.follows.map(f => {
+    const tag = ['p', f.pubkey];
+    if (f.relay || f.petname) tag.push(f.relay || '');
+    if (f.petname) tag.push(f.petname);
+    return tag;
+  });
   const event = createOwnEvent({ kind: 3, tags, content: '' });
   return publishToAll(event);
 }
