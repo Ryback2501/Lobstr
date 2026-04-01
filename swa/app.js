@@ -456,6 +456,23 @@ function renderFollowItem(f) {
   petnameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') petnameInput.blur(); });
   info.appendChild(petnameInput);
 
+  const relayInput = document.createElement('input');                                                                                                              
+  relayInput.type = 'text';                                                                                                                                        
+  relayInput.className = 'petname-input';                                                                                                                          
+  relayInput.value = f.relay || '';                                                                                                                                
+  relayInput.placeholder = 'Relay hint (wss://…)';                                                                                                                 
+                                                                                                                                                                   
+  async function saveRelay() {                                                                                                                                     
+    const newRelay = relayInput.value.trim();                                                                                                                      
+    if (newRelay === (f.relay || '')) return;                                                                                                                      
+    f.relay = newRelay;                                                                                                                                            
+    try { await publishFollowList(); } catch { /* ignore */ }                                                                                                      
+  }                                                                                                                                                                
+                                                                                                                                                                   
+  relayInput.addEventListener('blur', saveRelay);                                                                                                                  
+  relayInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') relayInput.blur(); });                                                                    
+  info.appendChild(relayInput); 
+
   const unfollowBtn = document.createElement('button');
   unfollowBtn.className = 'btn-unfollow';
   unfollowBtn.textContent = 'Unfollow';
