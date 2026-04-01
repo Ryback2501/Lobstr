@@ -29,6 +29,7 @@ export const store = {
   connectedRelayUrls: new Set(JSON.parse(localStorage.getItem('connectedRelayUrls') || '[]')),
   events: [],
   follows: [], // [{ pubkey, relay, petname }]
+  followedPubkeys: new Set(), // O(1) membership check
 
   on,
 
@@ -142,17 +143,20 @@ export const store = {
 
   setFollows(entries) {
     this.follows = entries;
+    this.followedPubkeys = new Set(entries.map(f => f.pubkey));
     emit('follows', entries);
   },
 
   addFollow(entry) {
-    if (this.follows.find(f => f.pubkey === entry.pubkey)) return;
+    if (this.followedPubkeys.has(entry.pubkey)) return;
     this.follows = [...this.follows, entry];
+    this.followedPubkeys.add(entry.pubkey);
     emit('follows', this.follows);
   },
 
   removeFollow(pubkey) {
     this.follows = this.follows.filter(f => f.pubkey !== pubkey);
+    this.followedPubkeys.delete(pubkey);
     emit('follows', this.follows);
   },
 };

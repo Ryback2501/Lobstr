@@ -483,7 +483,7 @@ followBtn.addEventListener('click', async () => {
     showFollowError('Must be a 64-character hex public key.');
     return;
   }
-  if (store.follows.find(f => f.pubkey === pubkey)) {
+  if (store.followedPubkeys.has(pubkey)) {
     showFollowError('Already following this key.');
     return;
   }
@@ -1257,7 +1257,7 @@ function renderEvent(event) {
 
   const isOwnPost = store.keys?.pubkeyHex === event.pubkey;
   if (!isOwnPost) {
-    const alreadyFollowing = !!store.follows.find(f => f.pubkey === event.pubkey);
+    const alreadyFollowing = store.followedPubkeys.has(event.pubkey);
     const followEventBtn = document.createElement('button');
     followEventBtn.className = 'btn-follow-feed';
     followEventBtn.textContent = alreadyFollowing ? 'Following' : 'Follow';
