@@ -76,7 +76,7 @@ export const store = {
     } else {
       this.events.splice(insertIdx, 0, event);
     }
-    emit('events', this.events);
+    emit('eventAdded', { event, insertIdx: insertIdx === -1 ? this.events.length - 1 : insertIdx });
   },
 
   clearEvents() {

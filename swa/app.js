@@ -146,12 +146,16 @@ store.on('follows', (follows) => {
   }
 });
 
-store.on('events', (events) => {
+store.on('events', () => {
+  // Fired only by clearEvents — reset the list
   eventsList.innerHTML = '';
-  for (const event of events) {
-    feedStatus.textContent = '';
-    eventsList.appendChild(renderEvent(event));
-  }
+});
+
+store.on('eventAdded', ({ event, insertIdx }) => {
+  feedStatus.textContent = '';
+  const card = renderEvent(event);
+  const ref = eventsList.children[insertIdx];
+  eventsList.insertBefore(card, ref ?? null);
 });
 
 store.on('profiles', () => {
