@@ -14,6 +14,7 @@ export const store = {
   relayUrls: JSON.parse(localStorage.getItem('relayUrls') || '["wss://relay.damus.io"]'),
   connectedRelayUrls: new Set(JSON.parse(localStorage.getItem('connectedRelayUrls') || '[]')),
   events: [],
+  follows: [], // [{ pubkey, relay, petname }]
 
   on,
 
@@ -104,5 +105,21 @@ export const store = {
   clearMentions() {
     this.mentions = [];
     emit('mentions', this.mentions);
+  },
+
+  setFollows(entries) {
+    this.follows = entries;
+    emit('follows', entries);
+  },
+
+  addFollow(entry) {
+    if (this.follows.find(f => f.pubkey === entry.pubkey)) return;
+    this.follows = [...this.follows, entry];
+    emit('follows', this.follows);
+  },
+
+  removeFollow(pubkey) {
+    this.follows = this.follows.filter(f => f.pubkey !== pubkey);
+    emit('follows', this.follows);
   },
 };

@@ -2,8 +2,8 @@ import { generateKeypair, importPrivkey, createEvent, verifyEvent } from './nost
 import { RelayConnection } from './relay.js';
 import { store } from './store.js';
 
-const VERSION = '0.0.1';
-const SUPPORTED_NIPS = ['01'];
+const VERSION = '0.0.2';
+const SUPPORTED_NIPS = ['01', '02'];
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 
@@ -28,6 +28,12 @@ const relayAddBtn = document.getElementById('relay-add-btn');
 const relayListEl = document.getElementById('relay-list');
 const relayNotice = document.getElementById('relay-notice');
 
+const followPubkeyInput = document.getElementById('follow-pubkey');
+const followBtn = document.getElementById('follow-btn');
+const followError = document.getElementById('follow-error');
+const followsStatus = document.getElementById('follows-status');
+const followsList = document.getElementById('follows-list');
+
 const postContent = document.getElementById('post-content');
 const charCount = document.getElementById('char-count');
 const postBtn = document.getElementById('post-btn');
@@ -42,6 +48,7 @@ const feedIdSearchBtn = document.getElementById('feed-id-search-btn');
 const feedHeader = document.getElementById('feed-header');
 const feedFilters = document.getElementById('feed-filters');
 const tabFeed = document.getElementById('tab-feed');
+const tabFollowing = document.getElementById('tab-following');
 const tabMentions = document.getElementById('tab-mentions');
 const mentionsList = document.getElementById('mentions-list');
 const mentionsStatus = document.getElementById('mentions-status');
@@ -58,13 +65,14 @@ const relays = new Map(); // url → { conn: RelayConnection|null, status: strin
 const activeSubs = new Map(); // subId → filters (all live REQs, for re-subscribing new relays)
 
 let ownProfileSubId = null;
+let followsSubId = null;
 let feedSubId = null;
 let metadataSubId = null;
 let idSearchSubId = null;
 let mentionsSubId = null;
 let sinceFilter = 0; // seconds offset from now; 0 = no filter
 let untilFilter = 0; // seconds offset from now; 0 = no filter
-let feedActiveTab = 'feed'; // 'feed' | 'mentions'
+let feedActiveTab = 'feed'; // 'feed' | 'following' | 'mentions'
 const replySubscriptions = new Map(); // eventId → { subId, container }
 const replySubIdToContainer = new Map(); // subId → container element
 const replyEventIds = new Map(); // subId → Set<eventId> (dedup across relays)
@@ -128,6 +136,15 @@ store.on('keys', (keys) => {
   }
 });
 
+store.on('follows', (follows) => {
+  followsStatus.textContent = follows.length === 0 ? 'Not following anyone yet.' : '';
+  renderFollows(follows);
+  updateFeedTabs();
+  if (feedActiveTab === 'following') {
+    subscribeToFeed();
+  }
+});
+
 store.on('events', (events) => {
   if (events.length === 0) return;
   feedStatus.textContent = '';
@@ -139,6 +156,7 @@ store.on('events', (events) => {
 
 store.on('profiles', () => {
   rerenderFeed();
+  renderFollows(store.follows);
 });
 
 store.on('mentions', (events) => {
@@ -228,7 +246,18 @@ feedUntilInput.addEventListener('change', () => {
   if (isAnyConnected()) subscribeToFeed();
 });
 
-tabFeed.addEventListener('click', () => switchTab('feed'));
+tabFeed.addEventListener('click', () => {
+  if (feedActiveTab === 'feed') return;
+  switchTab('feed');
+  subscribeToFeed();
+});
+
+tabFollowing.addEventListener('click', () => {
+  if (feedActiveTab === 'following') return;
+  switchTab('following');
+  subscribeToFeed();
+});
+
 tabMentions.addEventListener('click', () => switchTab('mentions'));
 
 feedIdSearchBtn.addEventListener('click', () => {
@@ -313,6 +342,154 @@ function removeRelay(url) {
   rerenderRelayList();
 }
 
+// ── Following ─────────────────────────────────────────────────────────────────
+
+followBtn.addEventListener('click', async () => {
+  if (!store.keys) {
+    showFollowError('Generate or import a keypair first.');
+    return;
+  }
+  if (!isAnyConnected()) {
+    showFollowError('Connect to a relay first.');
+    return;
+  }
+
+  const pubkey = followPubkeyInput.value.trim().toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(pubkey)) {
+    showFollowError('Must be a 64-character hex public key.');
+    return;
+  }
+  if (store.follows.find(f => f.pubkey === pubkey)) {
+    showFollowError('Already following this key.');
+    return;
+  }
+
+  followError.hidden = true;
+  store.addFollow({ pubkey, relay: '', petname: '' });
+  followPubkeyInput.value = '';
+
+  try {
+    await publishFollowList();
+  } catch (err) {
+    showFollowError(`Saved locally — relay error: ${err.message}`);
+  }
+});
+
+async function handleUnfollow(pubkey) {
+  store.removeFollow(pubkey);
+  try {
+    await publishFollowList();
+  } catch {
+    // Ignore relay error for unfollow
+  }
+}
+
+async function publishFollowList() {
+  const tags = store.follows.map(f => ['p', f.pubkey, f.relay, f.petname]);
+  const event = createEvent({
+    privkeyHex: store.keys.privkeyHex,
+    pubkeyHex: store.keys.pubkeyHex,
+    kind: 3,
+    tags,
+    content: '',
+  });
+  return publishToAll(event);
+}
+
+function handleFollowListEvent(event) {
+  const follows = event.tags
+    .filter(t => t[0] === 'p' && /^[0-9a-f]{64}$/.test(t[1]))
+    .map(t => ({ pubkey: t[1], relay: t[2] || '', petname: t[3] || '' }));
+  store.setFollows(follows);
+}
+
+function renderFollows(follows) {
+  followsList.innerHTML = '';
+  for (const f of follows) {
+    followsList.appendChild(renderFollowItem(f));
+  }
+}
+
+function renderFollowItem(f) {
+  const item = document.createElement('div');
+  item.className = 'follow-item';
+
+  const profile = store.profiles.get(f.pubkey);
+  const displayName = profile?.name || profile?.display_name || f.petname || (f.pubkey.slice(0, 12) + '…');
+
+  const avatar = document.createElement('div');
+  avatar.className = 'avatar';
+  if (profile?.picture) {
+    const img = document.createElement('img');
+    img.src = profile.picture;
+    img.alt = displayName;
+    img.onerror = () => { img.remove(); avatar.textContent = displayName[0].toUpperCase(); };
+    avatar.appendChild(img);
+  } else {
+    avatar.textContent = displayName[0].toUpperCase();
+    avatar.style.background = pubkeyColor(f.pubkey);
+  }
+
+  const info = document.createElement('div');
+  info.className = 'follow-info';
+
+  const nameEl = document.createElement('span');
+  nameEl.className = 'follow-pubkey';
+  nameEl.textContent = displayName;
+  nameEl.title = f.pubkey;
+  info.appendChild(nameEl);
+
+  const petnameInput = document.createElement('input');
+  petnameInput.type = 'text';
+  petnameInput.className = 'petname-input';
+  petnameInput.value = f.petname || '';
+  petnameInput.placeholder = 'Add petname…';
+
+  async function savePetname() {
+    const newPetname = petnameInput.value.trim();
+    if (newPetname === (f.petname || '')) return;
+    f.petname = newPetname;
+    try { await publishFollowList(); } catch { /* ignore */ }
+  }
+
+  petnameInput.addEventListener('blur', savePetname);
+  petnameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') petnameInput.blur(); });
+
+  const relayInput = document.createElement('input');
+  relayInput.type = 'text';
+  relayInput.className = 'petname-input';
+  relayInput.value = f.relay || '';
+  relayInput.placeholder = 'Relay hint (wss://…)';
+
+  async function saveRelay() {
+    const newRelay = relayInput.value.trim();
+    if (newRelay === (f.relay || '')) return;
+    f.relay = newRelay;
+    try { await publishFollowList(); } catch { /* ignore */ }
+  }
+
+  relayInput.addEventListener('blur', saveRelay);
+  relayInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') relayInput.blur(); });
+
+  const inputRow = document.createElement('div');
+  inputRow.className = 'input-row';
+  inputRow.append(petnameInput, relayInput);
+  info.appendChild(inputRow); 
+
+  const unfollowBtn = document.createElement('button');
+  unfollowBtn.className = 'btn-unfollow';
+  unfollowBtn.textContent = 'Unfollow';
+  unfollowBtn.addEventListener('click', () => handleUnfollow(f.pubkey));
+
+  item.append(avatar, info, unfollowBtn);
+  return item;
+}
+
+function showFollowError(msg) {
+  followError.textContent = msg;
+  followError.hidden = false;
+}
+
 // ── Post ──────────────────────────────────────────────────────────────────────
 
 postContent.addEventListener('input', () => {
@@ -361,6 +538,8 @@ function handleEvent(subId, event) {
   if (event.kind === 0) {
     handleMetadataEvent(event);
     if (subId === ownProfileSubId) populateProfileForm(event.pubkey);
+  } else if (subId === followsSubId && event.kind === 3) {
+    handleFollowListEvent(event);
   } else if (subId === feedSubId || subId === idSearchSubId) {
     store.addEvent(event);
   } else if (subId === mentionsSubId) {
@@ -378,7 +557,13 @@ function handleEvent(subId, event) {
 }
 
 function handleEOSE(subId) {
-  if (subId === feedSubId) {
+  if (subId === followsSubId) {
+    if (store.follows.length === 0) {
+      followsStatus.textContent = 'Not following anyone yet.';
+    } else {
+      fetchMissingMetadata();
+    }
+  } else if (subId === feedSubId) {
     if (store.events.length === 0) feedStatus.textContent = 'No events found.';
     fetchMissingMetadata();
   } else if (subId === idSearchSubId) {
@@ -404,6 +589,7 @@ function handleClosed(url, subId, message) {
   try { hostname = new URL(url).hostname; } catch { /* */ }
 
   const label = subId === feedSubId ? 'feed'
+    : subId === followsSubId ? 'follows'
     : subId === ownProfileSubId ? 'profile'
     : subId === metadataSubId ? 'metadata'
     : subId === idSearchSubId ? 'search'
@@ -444,6 +630,7 @@ function handleRelayStatus(url, status) {
       // First relay to connect — clear state and set up all subscriptions
       store.clearEvents();
       store.clearMentions();
+      store.setFollows([]);
       setupSubscriptions();
     } else {
       // Additional relay — subscribe it to all currently active subs
@@ -455,6 +642,7 @@ function handleRelayStatus(url, status) {
   } else if (!isAnyConnected()) {
     // All relays gone — reset subscription state
     ownProfileSubId = null;
+    followsSubId = null;
     feedSubId = null;
     metadataSubId = null;
     idSearchSubId = null;
@@ -464,6 +652,7 @@ function handleRelayStatus(url, status) {
     replySubIdToContainer.clear();
     replyEventIds.clear();
     feedStatus.textContent = 'Connect to a relay to see events.';
+    followsStatus.textContent = 'Connect with an identity to load your follow list.';
     updateFeedTabs();
   }
 }
@@ -502,6 +691,7 @@ async function publishToAll(event) {
 function setupSubscriptions() {
   activeSubs.clear();
   ownProfileSubId = null;
+  followsSubId = null;
   feedSubId = null;
   metadataSubId = null;
   mentionsSubId = null;
@@ -510,6 +700,11 @@ function setupSubscriptions() {
   if (store.keys) {
     ownProfileSubId = crypto.randomUUID();
     subscribeAll(ownProfileSubId, [{ kinds: [0], authors: [store.keys.pubkeyHex], limit: 1 }]);
+
+    followsSubId = crypto.randomUUID();
+    followsStatus.textContent = 'Loading follow list…';
+    subscribeAll(followsSubId, [{ kinds: [3], authors: [store.keys.pubkeyHex], limit: 1 }]);
+
     mentionsSubId = crypto.randomUUID();
     subscribeAll(mentionsSubId, [{ kinds: [1], '#p': [store.keys.pubkeyHex], limit: 20 }]);
   }
@@ -519,6 +714,13 @@ function setupSubscriptions() {
 }
 
 function subscribeToFeed() {
+  if (feedActiveTab === 'following' && store.follows.length === 0) {
+    if (feedSubId) unsubscribeAll(feedSubId);
+    feedSubId = null;
+    store.clearEvents();
+    feedStatus.textContent = 'Not following anyone yet.';
+    return;
+  }
   if (feedSubId) unsubscribeAll(feedSubId);
   feedSubId = crypto.randomUUID();
   store.clearEvents();
@@ -528,6 +730,9 @@ function subscribeToFeed() {
 
 function buildFeedFilter() {
   const filter = { kinds: [1], limit: 20 };
+  if (feedActiveTab === 'following' && store.follows.length > 0) {
+    filter.authors = store.follows.map(f => f.pubkey);
+  }
   if (sinceFilter > 0) filter.since = Math.floor(Date.now() / 1000) - sinceFilter;
   if (untilFilter > 0) filter.until = Math.floor(Date.now() / 1000) - untilFilter;
   return filter;
@@ -557,6 +762,7 @@ function fetchMissingMetadata() {
   const allPubkeys = [
     ...store.events.map(e => e.pubkey),
     ...store.mentions.map(e => e.pubkey),
+    ...store.follows.map(f => f.pubkey),
   ];
   const unknown = [...new Set(allPubkeys)].filter(pk => !store.profiles.has(pk));
   if (!unknown.length) return;
@@ -616,6 +822,39 @@ function rerenderFeed() {
   }
 }
 
+function switchTab(tab) {
+  feedActiveTab = tab;
+  tabFeed.classList.toggle('active', tab === 'feed');
+  tabFollowing.classList.toggle('active', tab === 'following');
+  tabMentions.classList.toggle('active', tab === 'mentions');
+
+  const isFeedLike = tab === 'feed' || tab === 'following';
+  feedFilters.hidden = !isFeedLike;
+  feedStatus.hidden = !isFeedLike;
+  eventsList.hidden = !isFeedLike;
+  mentionsStatus.hidden = tab !== 'mentions';
+  mentionsList.hidden = tab !== 'mentions';
+}
+
+function updateFeedTabs() {
+  feedHeader.hidden = !isAnyConnected();
+  tabFollowing.hidden = store.follows.length === 0;
+  tabMentions.hidden = !store.keys;
+
+  // If current tab is no longer valid, fall back to feed tab
+  if (feedActiveTab === 'following' && store.follows.length === 0) {
+    switchTab('feed');
+  }
+  if (feedActiveTab === 'mentions' && !store.keys) {
+    switchTab('feed');
+  }
+}
+
+function pubkeyColor(pubkey) {
+  const colors = ['#7c3aed', '#0891b2', '#059669', '#d97706', '#dc2626', '#db2777', '#6366f1'];
+  return colors[parseInt(pubkey.slice(0, 2), 16) % colors.length];
+}
+
 function setPostResult(msg, cls) {
   postResult.textContent = msg;
   postResult.className = 'result-msg ' + cls;
@@ -658,7 +897,29 @@ function renderEvent(event) {
   time.className = 'event-time';
   time.textContent = formatTime(event.created_at);
 
-  meta.append(avatar, authorEl, time);
+  const metaLeft = document.createElement('div');
+  metaLeft.className = 'event-meta-left';
+  metaLeft.append(avatar, authorEl, time);
+  meta.appendChild(metaLeft);
+
+  const isOwnPost = store.keys?.pubkeyHex === event.pubkey;
+  if (!isOwnPost) {
+    const alreadyFollowing = !!store.follows.find(f => f.pubkey === event.pubkey);
+    const followEventBtn = document.createElement('button');
+    followEventBtn.className = 'btn-follow-feed';
+    followEventBtn.textContent = alreadyFollowing ? 'Following' : 'Follow';
+    followEventBtn.disabled = alreadyFollowing;
+
+    followEventBtn.addEventListener('click', async () => {
+      store.addFollow({ pubkey: event.pubkey, relay: '', petname: '' });
+      rerenderFeed();
+      try {
+        await publishFollowList();
+      } catch { /* ignore relay error */ }
+    });
+
+    meta.appendChild(followEventBtn);
+  }
 
   // Reply indicator — shown when this event references another event via e or a tag
   const eTags = event.tags.filter(t => t[0] === 'e');
@@ -861,31 +1122,6 @@ function renderReply(event) {
 
   card.append(meta, content);
   return card;
-}
-
-function switchTab(tab) {
-  feedActiveTab = tab;
-  tabFeed.classList.toggle('active', tab === 'feed');
-  tabMentions.classList.toggle('active', tab === 'mentions');
-  feedFilters.hidden = tab !== 'feed';
-  feedStatus.hidden = tab !== 'feed';
-  eventsList.hidden = tab !== 'feed';
-  mentionsStatus.hidden = tab !== 'mentions';
-  mentionsList.hidden = tab !== 'mentions';
-}
-
-function updateFeedTabs() {
-  const showTabs = !!(store.keys && isAnyConnected());
-  feedHeader.hidden = !showTabs;
-  if (!showTabs) {
-    switchTab('feed');
-    feedStatus.hidden = false;
-  }
-}
-
-function pubkeyColor(pubkey) {
-  const colors = ['#7c3aed', '#0891b2', '#059669', '#d97706', '#dc2626', '#db2777', '#6366f1'];
-  return colors[parseInt(pubkey.slice(0, 2), 16) % colors.length];
 }
 
 function formatTime(unixSec) {
