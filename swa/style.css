@@ -576,9 +576,12 @@ details[open] > summary::before {
   margin-top: 0.75rem;
   padding-top: 0.75rem;
   border-top: 1px solid var(--border);
-  display: flex;
   flex-direction: column;
   gap: 0.5rem;
+}
+
+.reply-form:not([hidden]) {
+  display: flex;
 }
 
 .reply-form-label {
