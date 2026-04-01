@@ -107,6 +107,32 @@
       <div id="follows-list" class="follows-list"></div>
     </section>
 
+    <section id="dm-panel" class="panel">
+      <h2>Direct Messages</h2>
+      <div id="dm-convs-list" class="dm-convs-list"></div>
+      <details id="dm-new-conv">
+        <summary>New conversation</summary>
+        <div class="field-group" style="margin-top: 0.75rem;">
+          <div class="input-row">
+            <input id="dm-recipient" type="text" placeholder="Recipient pubkey (64-char hex)" autocomplete="off">
+            <button id="dm-open-btn">Open</button>
+          </div>
+          <div id="dm-recipient-error" class="error-msg" hidden></div>
+        </div>
+      </details>
+      <div id="dm-thread" hidden>
+        <div id="dm-thread-title" class="dm-thread-title"></div>
+        <div id="dm-messages" class="dm-messages"></div>
+        <div class="field-group">
+          <textarea id="dm-compose" rows="3" placeholder="Write a message…" maxlength="2000"></textarea>
+        </div>
+        <div class="btn-row">
+          <button id="dm-send-btn" class="primary">Send</button>
+          <span id="dm-result" class="result-msg"></span>
+        </div>
+      </div>
+    </section>
+
     <section id="post-panel" class="panel">
       <h2>Post</h2>
       <div class="field-group">
