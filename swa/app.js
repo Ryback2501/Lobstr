@@ -3,7 +3,7 @@ import { RelayConnection } from './relay.js';
 import { store } from './store.js';
 
 const VERSION = '0.0.2';
-const SUPPORTED_NIPS = ['01', '02', '03', '04'];
+const SUPPORTED_NIPS = ['01', '02', '03', '04', '05'];
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 
@@ -20,6 +20,7 @@ const copyPrivkeyBtn = document.getElementById('copy-privkey-btn');
 const profileNameInput = document.getElementById('profile-name');
 const profileAboutInput = document.getElementById('profile-about');
 const profilePictureInput = document.getElementById('profile-picture');
+const profileNip05Input = document.getElementById('profile-nip05');
 const profileSaveBtn = document.getElementById('profile-save-btn');
 const profileResult = document.getElementById('profile-result');
 
@@ -84,6 +85,7 @@ let mentionsSubId = null;
 let attestationSubId = null;
 let dmSubId = null;
 let currentDmContact = null; // pubkey of the open DM thread
+const nip05Checked = new Set(); // pubkeys already attempted (verified or failed)
 let feedRetryTimer = null;
 let sinceFilter = 0; // seconds offset from now; 0 = no filter
 let untilFilter = 0; // seconds offset from now; 0 = no filter
@@ -181,6 +183,12 @@ store.on('profiles', () => {
   rerenderDmConvList();
 });
 
+store.on('nip05', () => {
+  rerenderFeed();
+  renderFollows(store.follows);
+  rerenderDmConvList();
+});
+
 store.on('attestation', (eventId) => {
   for (const list of [eventsList, mentionsList]) {
     const card = list.querySelector(`[data-event-id="${eventId}"]`);
@@ -255,6 +263,7 @@ profileSaveBtn.addEventListener('click', async () => {
     name: profileNameInput.value.trim(),
     about: profileAboutInput.value.trim(),
     picture: profilePictureInput.value.trim(),
+    nip05: profileNip05Input.value.trim() || undefined,
   };
 
   profileSaveBtn.disabled = true;
@@ -472,6 +481,7 @@ function renderFollowItem(f) {
   nameEl.textContent = displayName;
   nameEl.title = f.pubkey;
   info.appendChild(nameEl);
+  if (store.nip05.has(f.pubkey)) info.appendChild(createNip05Badge(store.nip05.get(f.pubkey)));
 
   const petnameInput = document.createElement('input');
   petnameInput.type = 'text';
@@ -792,9 +802,32 @@ function handleMetadataEvent(event) {
     const existing = store.profiles.get(event.pubkey);
     if (!existing || event.created_at > existing._created_at) {
       store.setProfile(event.pubkey, { ...metadata, _created_at: event.created_at });
+      if (metadata.nip05) verifyNip05(event.pubkey, metadata.nip05);
     }
   } catch {
     // Ignore invalid JSON in kind-0 content
+  }
+}
+
+async function verifyNip05(pubkey, identifier) {
+  if (nip05Checked.has(pubkey)) return;
+  nip05Checked.add(pubkey);
+  const at = identifier.indexOf('@');
+  if (at < 1) return;
+  const local = identifier.slice(0, at).toLowerCase();
+  const domain = identifier.slice(at + 1).toLowerCase();
+  if (!local || !domain) return;
+  try {
+    const url = new URL(`https://${domain}/.well-known/nostr.json`);
+    url.searchParams.set('name', local);
+    const res = await fetch(url.toString(), { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) return;
+    const data = await res.json();
+    if (typeof data?.names?.[local] === 'string' && data.names[local].toLowerCase() === pubkey.toLowerCase()) {
+      store.setNip05(pubkey, identifier);
+    }
+  } catch {
+    // Verification failed silently — nip05Checked prevents retries
   }
 }
 
@@ -804,6 +837,7 @@ function populateProfileForm(pubkey) {
   profileNameInput.value = profile.name || profile.display_name || '';
   profileAboutInput.value = profile.about || '';
   profilePictureInput.value = profile.picture || '';
+  profileNip05Input.value = profile.nip05 || '';
 }
 
 function handleAttestationEvent(event) {
@@ -1078,6 +1112,14 @@ function bindSaveOnBlurOrEnter(input, fn) {
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') input.blur(); });
 }
 
+function createNip05Badge(identifier) {
+  const badge = document.createElement('span');
+  badge.className = 'nip05-badge';
+  badge.textContent = '✓ ' + identifier;
+  badge.title = `NIP-05 verified: ${identifier}`;
+  return badge;
+}
+
 function createOtsBadge() {
   const badge = document.createElement('a');
   badge.className = 'ots-badge';
@@ -1122,6 +1164,7 @@ function renderEvent(event) {
   const metaLeft = document.createElement('div');
   metaLeft.className = 'event-meta-left';
   metaLeft.append(avatar, authorEl, time);
+  if (store.nip05.has(event.pubkey)) metaLeft.appendChild(createNip05Badge(store.nip05.get(event.pubkey)));
   if (store.attestations.has(event.id)) metaLeft.appendChild(createOtsBadge());
   meta.appendChild(metaLeft);
 
@@ -1323,6 +1366,7 @@ function renderReply(event) {
   time.textContent = formatTime(event.created_at);
 
   meta.append(avatar, authorEl, time);
+  if (store.nip05.has(event.pubkey)) meta.appendChild(createNip05Badge(store.nip05.get(event.pubkey)));
 
   const content = document.createElement('div');
   content.className = 'event-content';
