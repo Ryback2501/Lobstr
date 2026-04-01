@@ -624,7 +624,7 @@ details[open] > summary::before {
 
 .follow-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 0.75rem;
   padding: 0.6rem 0;
@@ -638,7 +638,8 @@ details[open] > summary::before {
 .follow-info {
   display: flex;
   flex-direction: column;
-  gap: 0.1rem;
+  flex: 1;
+  gap: 0.35rem;
   min-width: 0;
 }
 
@@ -654,25 +655,8 @@ details[open] > summary::before {
 }
 
 .petname-input {
-  background: transparent;
-  border: none;
-  border-bottom: 1px solid transparent;
-  border-radius: 0;
-  color: var(--muted);
-  font-family: inherit;
   font-size: 0.78rem;
-  padding: 0.1rem 0;
-  width: 100%;
-  outline: none;
-  transition: border-color 0.15s;
-}
-
-.petname-input:focus {
-  border-bottom-color: var(--accent);
-}
-
-.petname-input::placeholder {
-  color: var(--border);
+  padding: 0.3rem 0.5rem;
 }
 
 .btn-unfollow {
