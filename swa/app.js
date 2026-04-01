@@ -709,9 +709,12 @@ function handleEOSE(subId) {
   }
 }
 
+function relayHostname(url) {
+  try { return new URL(url).hostname; } catch { return url; }
+}
+
 function handleClosed(url, subId, message) {
-  let hostname = url;
-  try { hostname = new URL(url).hostname; } catch { /* */ }
+  const hostname = relayHostname(url);
 
   const label = subId === feedSubId ? 'feed'
     : subId === followsSubId ? 'follows'
@@ -739,9 +742,7 @@ function handleClosed(url, subId, message) {
 }
 
 function handleNotice(url, message) {
-  let hostname = url;
-  try { hostname = new URL(url).hostname; } catch { /* */ }
-  relayNotice.textContent = `[${hostname}] ${message}`;
+  relayNotice.textContent = `[${relayHostname(url)}] ${message}`;
   relayNotice.hidden = false;
 }
 
