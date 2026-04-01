@@ -1140,12 +1140,13 @@ function formatTime(unixSec) {
 
 async function copyToClipboard(text, btn) {
   if (!text) return;
+  const orig = btn.textContent;
   try {
     await navigator.clipboard.writeText(text);
-    const orig = btn.textContent;
     btn.textContent = 'Copied!';
-    setTimeout(() => { btn.textContent = orig; }, 1500);
   } catch {
-    // Clipboard API not available (non-HTTPS dev environment, etc.)
+    btn.textContent = 'Copy failed';
+  } finally {
+    setTimeout(() => { btn.textContent = orig; }, 1500);
   }
 }
