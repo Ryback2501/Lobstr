@@ -969,7 +969,7 @@ function renderEvent(event) {
 
   const showRepliesBtn = document.createElement('button');
   showRepliesBtn.className = 'btn-reply';
-  showRepliesBtn.textContent = 'Replies';
+  showRepliesBtn.textContent = 'Show replies';
 
   actions.append(replyBtn, showRepliesBtn);
   card.append(content, actions);
@@ -991,9 +991,11 @@ function renderEvent(event) {
     const existing = replySubscriptions.get(event.id);
     if (existing) {
       repliesContainer.hidden = !repliesContainer.hidden;
+      showRepliesBtn.textContent = repliesContainer.hidden ? 'Show replies' : 'Hide replies';
     } else {
       if (!isAnyConnected()) return;
       repliesContainer.hidden = false;
+      showRepliesBtn.textContent = 'Hide replies';
       const loadingEl = document.createElement('div');
       loadingEl.className = 'replies-loading';
       loadingEl.textContent = 'Loading replies…';
