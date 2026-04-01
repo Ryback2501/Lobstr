@@ -464,6 +464,10 @@ function renderFollowItem(f) {
   async function saveRelay() {
     const newRelay = relayInput.value.trim();
     if (newRelay === (f.relay || '')) return;
+    if (newRelay && !newRelay.startsWith('wss://') && !newRelay.startsWith('ws://')) {
+      relayInput.value = f.relay || '';
+      return;
+    }
     f.relay = newRelay;
     try { await publishFollowList(); } catch { /* ignore */ }
   }
