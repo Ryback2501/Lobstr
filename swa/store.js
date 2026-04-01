@@ -6,7 +6,9 @@ function on(event, fn) {
 }
 
 function emit(event, data) {
-  listeners.get(event)?.forEach(fn => fn(data));
+  listeners.get(event)?.forEach(fn => {
+    try { fn(data); } catch (err) { console.error(`store listener error [${event}]:`, err); }
+  });
 }
 
 export const store = {
