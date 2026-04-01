@@ -417,13 +417,7 @@ function renderFollows(follows) {
   }
 }
 
-function renderFollowItem(f) {
-  const item = document.createElement('div');
-  item.className = 'follow-item';
-
-  const profile = store.profiles.get(f.pubkey);
-  const displayName = profile?.name || profile?.display_name || f.petname || (f.pubkey.slice(0, 12) + '…');
-
+function createAvatar(profile, displayName, pubkey) {
   const avatar = document.createElement('div');
   avatar.className = 'avatar';
   if (profile?.picture) {
@@ -434,8 +428,19 @@ function renderFollowItem(f) {
     avatar.appendChild(img);
   } else {
     avatar.textContent = (displayName[0] || '?').toUpperCase();
-    avatar.style.background = pubkeyColor(f.pubkey);
+    avatar.style.background = pubkeyColor(pubkey);
   }
+  return avatar;
+}
+
+function renderFollowItem(f) {
+  const item = document.createElement('div');
+  item.className = 'follow-item';
+
+  const profile = store.profiles.get(f.pubkey);
+  const displayName = profile?.name || profile?.display_name || f.petname || (f.pubkey.slice(0, 12) + '…');
+
+  const avatar = createAvatar(profile, displayName, f.pubkey);
 
   const info = document.createElement('div');
   info.className = 'follow-info';
@@ -886,18 +891,7 @@ function renderEvent(event) {
   const profile = store.profiles.get(event.pubkey);
   const displayName = profile?.name || profile?.display_name || (event.pubkey.slice(0, 12) + '…');
 
-  const avatar = document.createElement('div');
-  avatar.className = 'avatar';
-  if (profile?.picture) {
-    const img = document.createElement('img');
-    img.src = profile.picture;
-    img.alt = displayName;
-    img.onerror = () => { img.remove(); avatar.textContent = (displayName[0] || '?').toUpperCase(); };
-    avatar.appendChild(img);
-  } else {
-    avatar.textContent = (displayName[0] || '?').toUpperCase();
-    avatar.style.background = pubkeyColor(event.pubkey);
-  }
+  const avatar = createAvatar(profile, displayName, event.pubkey);
 
   const authorEl = document.createElement('span');
   authorEl.className = 'event-pubkey';
@@ -1105,18 +1099,7 @@ function renderReply(event) {
   const profile = store.profiles.get(event.pubkey);
   const displayName = profile?.name || profile?.display_name || (event.pubkey.slice(0, 12) + '…');
 
-  const avatar = document.createElement('div');
-  avatar.className = 'avatar';
-  if (profile?.picture) {
-    const img = document.createElement('img');
-    img.src = profile.picture;
-    img.alt = displayName;
-    img.onerror = () => { img.remove(); avatar.textContent = (displayName[0] || '?').toUpperCase(); };
-    avatar.appendChild(img);
-  } else {
-    avatar.textContent = (displayName[0] || '?').toUpperCase();
-    avatar.style.background = pubkeyColor(event.pubkey);
-  }
+  const avatar = createAvatar(profile, displayName, event.pubkey);
 
   const authorEl = document.createElement('span');
   authorEl.className = 'event-pubkey';
