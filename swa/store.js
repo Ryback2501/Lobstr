@@ -119,6 +119,20 @@ export const store = {
     emit('mentions', this.mentions);
   },
 
+  dms: [], // kind-4 events, newest first
+  dmDecrypted: new Map(), // eventId → plaintext string
+
+  addDm(event) {
+    if (this.dms.find(e => e.id === event.id)) return;
+    sortedInsert(this.dms, event);
+    emit('dm', event);
+  },
+
+  setDmDecrypted(eventId, text) {
+    this.dmDecrypted.set(eventId, text);
+    emit('dmDecrypted', eventId);
+  },
+
   setFollows(entries) {
     this.follows = entries;
     emit('follows', entries);

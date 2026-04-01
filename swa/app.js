@@ -1,9 +1,9 @@
-import { generateKeypair, importPrivkey, createEvent, verifyEvent } from './nostr.js';
+import { generateKeypair, importPrivkey, createEvent, verifyEvent, encryptDm, decryptDm } from './nostr.js';
 import { RelayConnection } from './relay.js';
 import { store } from './store.js';
 
 const VERSION = '0.0.2';
-const SUPPORTED_NIPS = ['01', '02', '03'];
+const SUPPORTED_NIPS = ['01', '02', '03', '04'];
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 
@@ -53,6 +53,17 @@ const tabMentions = document.getElementById('tab-mentions');
 const mentionsList = document.getElementById('mentions-list');
 const mentionsStatus = document.getElementById('mentions-status');
 
+const dmConvsList = document.getElementById('dm-convs-list');
+const dmRecipientInput = document.getElementById('dm-recipient');
+const dmOpenBtn = document.getElementById('dm-open-btn');
+const dmRecipientError = document.getElementById('dm-recipient-error');
+const dmThread = document.getElementById('dm-thread');
+const dmThreadTitle = document.getElementById('dm-thread-title');
+const dmMessages = document.getElementById('dm-messages');
+const dmCompose = document.getElementById('dm-compose');
+const dmSendBtn = document.getElementById('dm-send-btn');
+const dmResult = document.getElementById('dm-result');
+
 const infoBtn = document.getElementById('info-btn');
 const infoModal = document.getElementById('info-modal');
 const modalCloseBtn = document.getElementById('modal-close-btn');
@@ -71,6 +82,8 @@ let metadataSubId = null;
 let idSearchSubId = null;
 let mentionsSubId = null;
 let attestationSubId = null;
+let dmSubId = null;
+let currentDmContact = null; // pubkey of the open DM thread
 let feedRetryTimer = null;
 let sinceFilter = 0; // seconds offset from now; 0 = no filter
 let untilFilter = 0; // seconds offset from now; 0 = no filter
@@ -165,6 +178,7 @@ store.on('eventAdded', ({ event, insertIdx }) => {
 store.on('profiles', () => {
   rerenderFeed();
   renderFollows(store.follows);
+  rerenderDmConvList();
 });
 
 store.on('attestation', (eventId) => {
@@ -174,6 +188,26 @@ store.on('attestation', (eventId) => {
       card.querySelector('.event-meta-left')?.appendChild(createOtsBadge());
     }
   }
+});
+
+store.on('dm', (event) => {
+  const contact = getDmContact(event);
+  rerenderDmConvList();
+  if (contact === currentDmContact) {
+    appendDmMessage(event);
+    dmMessages.scrollTop = dmMessages.scrollHeight;
+  }
+  tryDecryptDm(event);
+});
+
+store.on('dmDecrypted', (eventId) => {
+  const wrapper = dmMessages.querySelector(`[data-dm-id="${eventId}"]`);
+  if (wrapper) {
+    const textEl = wrapper.querySelector('.dm-bubble');
+    if (textEl) textEl.textContent = store.dmDecrypted.get(eventId);
+    wrapper.classList.remove('dm-pending');
+  }
+  rerenderDmConvList();
 });
 
 store.on('mentions', (events) => {
@@ -533,6 +567,8 @@ function handleEvent(subId, event) {
     store.addEvent(event);
   } else if (event.kind === 1040) {
     handleAttestationEvent(event);
+  } else if (event.kind === 4) {
+    handleDmEvent(event);
   } else if (subId === mentionsSubId) {
     store.addMention(event);
   } else if (replySubIdToContainer.has(subId)) {
@@ -564,6 +600,9 @@ function handleEOSE(subId) {
   } else if (subId === mentionsSubId) {
     if (store.mentions.length === 0) mentionsStatus.textContent = 'No mentions yet.';
     fetchMissingMetadata();
+  } else if (subId === dmSubId) {
+    fetchMissingMetadata();
+    rerenderDmConvList();
   } else if (replySubIdToContainer.has(subId)) {
     const container = replySubIdToContainer.get(subId);
     if (container.querySelector('.replies-loading')) {
@@ -587,6 +626,7 @@ function handleClosed(url, subId, message) {
     : subId === idSearchSubId ? 'search'
     : subId === mentionsSubId ? 'mentions'
     : subId === attestationSubId ? 'attestations'
+    : subId === dmSubId ? 'dms'
     : replySubIdToContainer.has(subId) ? 'replies'
     : 'unknown';
   relayNotice.textContent = `[${hostname}] closed ${label} subscription: ${message || 'no reason given'}`;
@@ -643,6 +683,7 @@ function handleRelayStatus(url, status) {
     mentionsSubId = null;
     activeSubs.clear();
     attestationSubId = null;
+    dmSubId = null;
     replySubscriptions.clear();
     replySubIdToContainer.clear();
     replyEventIds.clear();
@@ -693,6 +734,7 @@ function setupSubscriptions() {
   metadataSubId = null;
   mentionsSubId = null;
   attestationSubId = null;
+  dmSubId = null;
   idSearchSubId = null;
 
   if (store.keys) {
@@ -705,6 +747,12 @@ function setupSubscriptions() {
 
     mentionsSubId = crypto.randomUUID();
     subscribeAll(mentionsSubId, [{ kinds: [1], '#p': [store.keys.pubkeyHex], limit: 20 }]);
+
+    dmSubId = crypto.randomUUID();
+    subscribeAll(dmSubId, [
+      { kinds: [4], '#p': [store.keys.pubkeyHex], limit: 50 },
+      { kinds: [4], authors: [store.keys.pubkeyHex], limit: 50 },
+    ]);
   }
 
   subscribeToFeed();
@@ -771,11 +819,159 @@ function subscribeAttestations() {
   subscribeAll(attestationSubId, [{ kinds: [1040], '#e': ids, limit: 50 }]);
 }
 
+// ── Direct Messages ───────────────────────────────────────────────────────────
+
+function getDmContact(event) {
+  const myPubkey = store.keys?.pubkeyHex;
+  if (!myPubkey) return null;
+  return event.pubkey === myPubkey
+    ? (event.tags.find(t => t[0] === 'p')?.[1] ?? null)
+    : event.pubkey;
+}
+
+function handleDmEvent(event) {
+  if (!store.keys) return;
+  const myPubkey = store.keys.pubkeyHex;
+  const isOutgoing = event.pubkey === myPubkey;
+  const isIncoming = event.tags.some(t => t[0] === 'p' && t[1] === myPubkey);
+  if (!isOutgoing && !isIncoming) return;
+  store.addDm(event);
+}
+
+async function tryDecryptDm(event) {
+  if (!store.keys || store.dmDecrypted.has(event.id)) return;
+  const contact = getDmContact(event);
+  if (!contact) return;
+  try {
+    const plaintext = await decryptDm(store.keys.privkeyHex, contact, event.content);
+    store.setDmDecrypted(event.id, plaintext);
+  } catch {
+    store.setDmDecrypted(event.id, '[decryption failed]');
+  }
+}
+
+function rerenderDmConvList() {
+  if (!store.keys) return;
+  dmConvsList.innerHTML = '';
+  const contacts = new Map(); // pubkey → latest event
+  for (const event of store.dms) {
+    const contact = getDmContact(event);
+    if (!contact) continue;
+    if (!contacts.has(contact) || event.created_at > contacts.get(contact).created_at) {
+      contacts.set(contact, event);
+    }
+  }
+  if (contacts.size === 0) return;
+  const sorted = [...contacts.entries()].sort((a, b) => b[1].created_at - a[1].created_at);
+  for (const [pubkey, latestEvent] of sorted) {
+    const profile = store.profiles.get(pubkey);
+    const displayName = getDisplayName(profile, pubkey.slice(0, 12) + '…');
+    const preview = store.dmDecrypted.get(latestEvent.id) ?? '…';
+
+    const item = document.createElement('div');
+    item.className = 'dm-conv-item' + (pubkey === currentDmContact ? ' active' : '');
+
+    const nameEl = document.createElement('span');
+    nameEl.className = 'dm-conv-name';
+    nameEl.textContent = displayName;
+
+    const previewEl = document.createElement('span');
+    previewEl.className = 'dm-conv-preview';
+    previewEl.textContent = preview.length > 50 ? preview.slice(0, 50) + '…' : preview;
+
+    item.append(nameEl, previewEl);
+    item.addEventListener('click', () => openDmThread(pubkey));
+    dmConvsList.appendChild(item);
+  }
+}
+
+function openDmThread(pubkey) {
+  currentDmContact = pubkey;
+  const profile = store.profiles.get(pubkey);
+  const displayName = getDisplayName(profile, pubkey.slice(0, 12) + '…');
+  dmThreadTitle.textContent = `Conversation with ${displayName}`;
+  dmMessages.innerHTML = '';
+  const msgs = store.dms
+    .filter(e => getDmContact(e) === pubkey)
+    .slice().reverse(); // oldest first
+  for (const event of msgs) appendDmMessage(event);
+  dmThread.hidden = false;
+  dmMessages.scrollTop = dmMessages.scrollHeight;
+  rerenderDmConvList();
+}
+
+function appendDmMessage(event) {
+  if (!store.keys) return;
+  const isOutgoing = event.pubkey === store.keys.pubkeyHex;
+  const decrypted = store.dmDecrypted.get(event.id);
+
+  const wrapper = document.createElement('div');
+  wrapper.dataset.dmId = event.id;
+  wrapper.className = 'dm-message-wrapper ' + (isOutgoing ? 'outgoing' : 'incoming');
+  if (decrypted === undefined) wrapper.classList.add('dm-pending');
+
+  const bubble = document.createElement('div');
+  bubble.className = 'dm-bubble';
+  bubble.textContent = decrypted !== undefined ? decrypted : '…';
+
+  const timeEl = document.createElement('div');
+  timeEl.className = 'dm-message-time';
+  timeEl.textContent = formatTime(event.created_at);
+
+  wrapper.append(bubble, timeEl);
+  dmMessages.appendChild(wrapper);
+}
+
+dmOpenBtn.addEventListener('click', () => {
+  const pubkey = dmRecipientInput.value.trim().toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(pubkey)) {
+    dmRecipientError.textContent = 'Must be a 64-character hex public key.';
+    dmRecipientError.hidden = false;
+    return;
+  }
+  dmRecipientError.hidden = true;
+  openDmThread(pubkey);
+});
+
+dmRecipientInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') dmOpenBtn.click(); });
+
+dmSendBtn.addEventListener('click', async () => {
+  if (!requireKeysAndRelay((msg) => setResult(dmResult, msg, 'err'))) return;
+  if (!currentDmContact) {
+    setResult(dmResult, 'Open a conversation first.', 'err');
+    return;
+  }
+  const content = dmCompose.value.trim();
+  if (!content) return;
+
+  dmSendBtn.disabled = true;
+  setResult(dmResult, 'Sending…', '');
+
+  try {
+    const encrypted = await encryptDm(store.keys.privkeyHex, currentDmContact, content);
+    const event = createOwnEvent({ kind: 4, tags: [['p', currentDmContact]], content: encrypted });
+    await publishToAll(event);
+    store.addDm(event);
+    dmCompose.value = '';
+    setResult(dmResult, '', '');
+  } catch (err) {
+    setResult(dmResult, err.message, 'err');
+  } finally {
+    dmSendBtn.disabled = false;
+  }
+});
+
 function fetchMissingMetadata() {
+  const myPubkey = store.keys?.pubkeyHex;
   const allPubkeys = [
     ...store.events.map(e => e.pubkey),
     ...store.mentions.map(e => e.pubkey),
     ...store.follows.map(f => f.pubkey),
+    ...store.dms.map(e =>
+      e.pubkey === myPubkey
+        ? (e.tags.find(t => t[0] === 'p')?.[1] ?? null)
+        : e.pubkey
+    ).filter(Boolean),
   ];
   const unknown = [...new Set(allPubkeys)].filter(pk => !store.profiles.has(pk));
   if (!unknown.length) return;
