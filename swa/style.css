@@ -675,6 +675,46 @@ details[open] > summary::before {
   border-color: var(--accent);
 }
 
+.btn-row select {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.875rem;
+  padding: 0.5rem 0.65rem;
+  outline: none;
+  cursor: pointer;
+}
+
+.btn-row select:focus {
+  border-color: var(--accent);
+}
+
+.mnemonic-display {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+
+.mnemonic-word {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 0.25rem 0.5rem;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.mnemonic-word-num {
+  color: var(--muted);
+  font-size: 0.65rem;
+}
+
 .nip05-badge {
   font-size: 0.68rem;
   padding: 0.1rem 0.35rem;
