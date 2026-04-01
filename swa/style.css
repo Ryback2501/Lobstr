@@ -576,9 +576,12 @@ details[open] > summary::before {
   margin-top: 0.75rem;
   padding-top: 0.75rem;
   border-top: 1px solid var(--border);
-  display: flex;
   flex-direction: column;
   gap: 0.5rem;
+}
+
+.reply-form:not([hidden]) {
+  display: flex;
 }
 
 .reply-form-label {
@@ -649,10 +652,6 @@ details[open] > summary::before {
   color: var(--accent);
 }
 
-.follow-petname {
-  font-size: 0.78rem;
-  color: var(--muted);
-}
 
 .petname-input {
   font-size: 0.78rem;

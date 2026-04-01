@@ -1,3 +1,15 @@
+const MAX_EVENTS = 200;
+
+function sortedInsert(array, item) {
+  const idx = array.findIndex(e => e.created_at < item.created_at);
+  if (idx === -1) {
+    array.push(item);
+  } else {
+    array.splice(idx, 0, item);
+  }
+  return idx === -1 ? array.length - 1 : idx;
+}
+
 const listeners = new Map();
 
 function on(event, fn) {
@@ -6,7 +18,9 @@ function on(event, fn) {
 }
 
 function emit(event, data) {
-  listeners.get(event)?.forEach(fn => fn(data));
+  listeners.get(event)?.forEach(fn => {
+    try { fn(data); } catch (err) { console.error(`store listener error [${event}]:`, err); }
+  });
 }
 
 export const store = {
@@ -67,14 +81,9 @@ export const store = {
       if (this.events.find(e => e.id === event.id)) return;
     }
 
-    // Insert sorted by created_at descending
-    const insertIdx = this.events.findIndex(e => e.created_at < event.created_at);
-    if (insertIdx === -1) {
-      this.events.push(event);
-    } else {
-      this.events.splice(insertIdx, 0, event);
-    }
-    emit('events', this.events);
+    const insertIdx = sortedInsert(this.events, event);
+    if (this.events.length > MAX_EVENTS) this.events.length = MAX_EVENTS;
+    emit('eventAdded', { event, insertIdx });
   },
 
   clearEvents() {
@@ -93,12 +102,7 @@ export const store = {
 
   addMention(event) {
     if (this.mentions.find(e => e.id === event.id)) return;
-    const insertIdx = this.mentions.findIndex(e => e.created_at < event.created_at);
-    if (insertIdx === -1) {
-      this.mentions.push(event);
-    } else {
-      this.mentions.splice(insertIdx, 0, event);
-    }
+    sortedInsert(this.mentions, event);
     emit('mentions', this.mentions);
   },
 

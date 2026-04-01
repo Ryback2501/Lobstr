@@ -1,6 +1,6 @@
-import { schnorr } from 'https://esm.sh/@noble/curves@1.8.1/secp256k1';
-import { sha256 } from 'https://esm.sh/@noble/hashes@1.7.2/sha256';
-import { bytesToHex, utf8ToBytes } from 'https://esm.sh/@noble/hashes@1.7.2/utils';
+import { schnorr } from './vendor/secp256k1.mjs';
+import { sha256 } from './vendor/sha256.mjs';
+import { bytesToHex, utf8ToBytes } from './vendor/utils.mjs';
 
 export function hexToBytes(hex) {
   if (hex.length % 2 !== 0) throw new Error('Invalid hex string');

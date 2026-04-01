@@ -42,7 +42,7 @@ const postResult = document.getElementById('post-result');
 const feedStatus = document.getElementById('feed-status');
 const eventsList = document.getElementById('events-list');
 const feedSinceSelect = document.getElementById('feed-since');
-const feedUntilInput = document.getElementById('feed-until');
+const feedUntilSelect = document.getElementById('feed-until');
 const feedIdSearch = document.getElementById('feed-id-search');
 const feedIdSearchBtn = document.getElementById('feed-id-search-btn');
 const feedHeader = document.getElementById('feed-header');
@@ -70,6 +70,7 @@ let feedSubId = null;
 let metadataSubId = null;
 let idSearchSubId = null;
 let mentionsSubId = null;
+let feedRetryTimer = null;
 let sinceFilter = 0; // seconds offset from now; 0 = no filter
 let untilFilter = 0; // seconds offset from now; 0 = no filter
 let feedActiveTab = 'feed'; // 'feed' | 'following' | 'mentions'
@@ -145,12 +146,18 @@ store.on('follows', (follows) => {
   }
 });
 
-store.on('events', (events) => {
-  if (events.length === 0) return;
-  feedStatus.textContent = '';
+store.on('events', () => {
+  // Fired only by clearEvents — reset the list
   eventsList.innerHTML = '';
-  for (const event of events) {
-    eventsList.appendChild(renderEvent(event));
+});
+
+store.on('eventAdded', ({ event, insertIdx }) => {
+  feedStatus.textContent = '';
+  const card = renderEvent(event);
+  const ref = eventsList.children[insertIdx];
+  eventsList.insertBefore(card, ref ?? null);
+  while (eventsList.children.length > store.events.length) {
+    eventsList.lastChild.remove();
   }
 });
 
@@ -160,7 +167,7 @@ store.on('profiles', () => {
 });
 
 store.on('mentions', (events) => {
-  mentionsStatus.hidden = events.length > 0;
+  mentionsStatus.hidden = feedActiveTab !== 'mentions' || events.length > 0;
   mentionsList.innerHTML = '';
   for (const event of events) {
     mentionsList.appendChild(renderEvent(event));
@@ -198,14 +205,7 @@ copyPrivkeyBtn.addEventListener('click', () => copyToClipboard(privkeyDisplay.va
 // ── Profile ───────────────────────────────────────────────────────────────────
 
 profileSaveBtn.addEventListener('click', async () => {
-  if (!store.keys) {
-    setProfileResult('Generate or import a keypair first.', 'err');
-    return;
-  }
-  if (!isAnyConnected()) {
-    setProfileResult('Connect to a relay first.', 'err');
-    return;
-  }
+  if (!requireKeysAndRelay((msg) => setProfileResult(msg, 'err'))) return;
 
   const metadata = {
     name: profileNameInput.value.trim(),
@@ -217,13 +217,7 @@ profileSaveBtn.addEventListener('click', async () => {
   setProfileResult('Saving…', '');
 
   try {
-    const event = createEvent({
-      privkeyHex: store.keys.privkeyHex,
-      pubkeyHex: store.keys.pubkeyHex,
-      kind: 0,
-      tags: [],
-      content: JSON.stringify(metadata),
-    });
+    const event = createOwnEvent({ kind: 0, tags: [], content: JSON.stringify(metadata) });
     await publishToAll(event);
     store.setProfile(store.keys.pubkeyHex, { ...metadata, _created_at: event.created_at });
     setProfileResult('Saved.', 'ok');
@@ -241,8 +235,8 @@ feedSinceSelect.addEventListener('change', () => {
   if (isAnyConnected()) subscribeToFeed();
 });
 
-feedUntilInput.addEventListener('change', () => {
-  untilFilter = parseInt(feedUntilInput.value) || 0;
+feedUntilSelect.addEventListener('change', () => {
+  untilFilter = parseInt(feedUntilSelect.value) || 0;
   if (isAnyConnected()) subscribeToFeed();
 });
 
@@ -284,7 +278,7 @@ relayAddInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') addRel
 function addRelay() {
   const url = relayAddInput.value.trim();
   if (!url) return;
-  if (!url.startsWith('wss://') && !url.startsWith('ws://')) {
+  if (!isValidRelayUrl(url)) {
     relayNotice.textContent = 'Relay URL must start with wss:// or ws://';
     relayNotice.hidden = false;
     return;
@@ -345,14 +339,7 @@ function removeRelay(url) {
 // ── Following ─────────────────────────────────────────────────────────────────
 
 followBtn.addEventListener('click', async () => {
-  if (!store.keys) {
-    showFollowError('Generate or import a keypair first.');
-    return;
-  }
-  if (!isAnyConnected()) {
-    showFollowError('Connect to a relay first.');
-    return;
-  }
+  if (!requireKeysAndRelay(showFollowError)) return;
 
   const pubkey = followPubkeyInput.value.trim().toLowerCase();
   if (!/^[0-9a-f]{64}$/.test(pubkey)) {
@@ -386,13 +373,7 @@ async function handleUnfollow(pubkey) {
 
 async function publishFollowList() {
   const tags = store.follows.map(f => ['p', f.pubkey, f.relay, f.petname]);
-  const event = createEvent({
-    privkeyHex: store.keys.privkeyHex,
-    pubkeyHex: store.keys.pubkeyHex,
-    kind: 3,
-    tags,
-    content: '',
-  });
+  const event = createOwnEvent({ kind: 3, tags, content: '' });
   return publishToAll(event);
 }
 
@@ -410,25 +391,34 @@ function renderFollows(follows) {
   }
 }
 
-function renderFollowItem(f) {
-  const item = document.createElement('div');
-  item.className = 'follow-item';
+function getDisplayName(profile, fallback) {
+  return profile?.name || profile?.display_name || fallback;
+}
 
-  const profile = store.profiles.get(f.pubkey);
-  const displayName = profile?.name || profile?.display_name || f.petname || (f.pubkey.slice(0, 12) + '…');
-
+function createAvatar(profile, displayName, pubkey) {
   const avatar = document.createElement('div');
   avatar.className = 'avatar';
   if (profile?.picture) {
     const img = document.createElement('img');
     img.src = profile.picture;
     img.alt = displayName;
-    img.onerror = () => { img.remove(); avatar.textContent = displayName[0].toUpperCase(); };
+    img.onerror = () => { img.remove(); avatar.textContent = (displayName[0] || '?').toUpperCase(); };
     avatar.appendChild(img);
   } else {
-    avatar.textContent = displayName[0].toUpperCase();
-    avatar.style.background = pubkeyColor(f.pubkey);
+    avatar.textContent = (displayName[0] || '?').toUpperCase();
+    avatar.style.background = pubkeyColor(pubkey);
   }
+  return avatar;
+}
+
+function renderFollowItem(f) {
+  const item = document.createElement('div');
+  item.className = 'follow-item';
+
+  const profile = store.profiles.get(f.pubkey);
+  const displayName = getDisplayName(profile, f.petname || (f.pubkey.slice(0, 12) + '…'));
+
+  const avatar = createAvatar(profile, displayName, f.pubkey);
 
   const info = document.createElement('div');
   info.className = 'follow-info';
@@ -452,8 +442,7 @@ function renderFollowItem(f) {
     try { await publishFollowList(); } catch { /* ignore */ }
   }
 
-  petnameInput.addEventListener('blur', savePetname);
-  petnameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') petnameInput.blur(); });
+  bindSaveOnBlurOrEnter(petnameInput, savePetname);
 
   const relayInput = document.createElement('input');
   relayInput.type = 'text';
@@ -464,12 +453,15 @@ function renderFollowItem(f) {
   async function saveRelay() {
     const newRelay = relayInput.value.trim();
     if (newRelay === (f.relay || '')) return;
+    if (newRelay && !isValidRelayUrl(newRelay)) {
+      relayInput.value = f.relay || '';
+      return;
+    }
     f.relay = newRelay;
     try { await publishFollowList(); } catch { /* ignore */ }
   }
 
-  relayInput.addEventListener('blur', saveRelay);
-  relayInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') relayInput.blur(); });
+  bindSaveOnBlurOrEnter(relayInput, saveRelay);
 
   const inputRow = document.createElement('div');
   inputRow.className = 'input-row';
@@ -497,14 +489,7 @@ postContent.addEventListener('input', () => {
 });
 
 postBtn.addEventListener('click', async () => {
-  if (!store.keys) {
-    setPostResult('Generate or import a keypair first.', 'err');
-    return;
-  }
-  if (!isAnyConnected()) {
-    setPostResult('Connect to a relay first.', 'err');
-    return;
-  }
+  if (!requireKeysAndRelay((msg) => setPostResult(msg, 'err'))) return;
   const content = postContent.value.trim();
   if (!content) return;
 
@@ -512,13 +497,7 @@ postBtn.addEventListener('click', async () => {
   setPostResult('Publishing…', '');
 
   try {
-    const event = createEvent({
-      privkeyHex: store.keys.privkeyHex,
-      pubkeyHex: store.keys.pubkeyHex,
-      kind: 1,
-      tags: [],
-      content,
-    });
+    const event = createOwnEvent({ kind: 1, tags: [], content });
     await publishToAll(event);
     store.addEvent(event);
     postContent.value = '';
@@ -599,9 +578,10 @@ function handleClosed(url, subId, message) {
   relayNotice.textContent = `[${hostname}] closed ${label} subscription: ${message || 'no reason given'}`;
   relayNotice.hidden = false;
 
-  if (subId === feedSubId) {
+  if (subId === feedSubId && !feedRetryTimer) {
     feedStatus.textContent = 'Feed closed by relay. Retrying in 5s…';
-    setTimeout(() => {
+    feedRetryTimer = setTimeout(() => {
+      feedRetryTimer = null;
       const entry = relays.get(url);
       if (entry?.status === 'connected' && entry.conn && activeSubs.has(feedSubId)) {
         entry.conn.subscribe(feedSubId, activeSubs.get(feedSubId));
@@ -651,6 +631,8 @@ function handleRelayStatus(url, status) {
     replySubscriptions.clear();
     replySubIdToContainer.clear();
     replyEventIds.clear();
+    clearTimeout(feedRetryTimer);
+    feedRetryTimer = null;
     feedStatus.textContent = 'Connect to a relay to see events.';
     followsStatus.textContent = 'Connect with an identity to load your follow list.';
     updateFeedTabs();
@@ -714,6 +696,8 @@ function setupSubscriptions() {
 }
 
 function subscribeToFeed() {
+  clearTimeout(feedRetryTimer);
+  feedRetryTimer = null;
   if (feedActiveTab === 'following' && store.follows.length === 0) {
     if (feedSubId) unsubscribeAll(feedSubId);
     feedSubId = null;
@@ -838,13 +822,8 @@ function switchTab(tab) {
 
 function updateFeedTabs() {
   feedHeader.hidden = !isAnyConnected();
-  tabFollowing.hidden = store.follows.length === 0;
   tabMentions.hidden = !store.keys;
 
-  // If current tab is no longer valid, fall back to feed tab
-  if (feedActiveTab === 'following' && store.follows.length === 0) {
-    switchTab('feed');
-  }
   if (feedActiveTab === 'mentions' && !store.keys) {
     switchTab('feed');
   }
@@ -855,15 +834,32 @@ function pubkeyColor(pubkey) {
   return colors[parseInt(pubkey.slice(0, 2), 16) % colors.length];
 }
 
-function setPostResult(msg, cls) {
-  postResult.textContent = msg;
-  postResult.className = 'result-msg ' + cls;
+function requireKeysAndRelay(errorFn) {
+  if (!store.keys) { errorFn('Generate or import a keypair first.'); return false; }
+  if (!isAnyConnected()) { errorFn('Connect to a relay first.'); return false; }
+  return true;
 }
 
-function setProfileResult(msg, cls) {
-  profileResult.textContent = msg;
-  profileResult.className = 'result-msg ' + cls;
+function createOwnEvent({ kind, tags, content }) {
+  return createEvent({ privkeyHex: store.keys.privkeyHex, pubkeyHex: store.keys.pubkeyHex, kind, tags, content });
 }
+
+function isValidRelayUrl(url) {
+  return url.startsWith('wss://') || url.startsWith('ws://');
+}
+
+function bindSaveOnBlurOrEnter(input, fn) {
+  input.addEventListener('blur', fn);
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') input.blur(); });
+}
+
+function setResult(el, msg, cls) {
+  el.textContent = msg;
+  el.className = 'result-msg ' + cls;
+}
+
+function setPostResult(msg, cls) { setResult(postResult, msg, cls); }
+function setProfileResult(msg, cls) { setResult(profileResult, msg, cls); }
 
 function renderEvent(event) {
   const card = document.createElement('div');
@@ -873,20 +869,9 @@ function renderEvent(event) {
   meta.className = 'event-meta';
 
   const profile = store.profiles.get(event.pubkey);
-  const displayName = profile?.name || profile?.display_name || (event.pubkey.slice(0, 12) + '…');
+  const displayName = getDisplayName(profile, event.pubkey.slice(0, 12) + '…');
 
-  const avatar = document.createElement('div');
-  avatar.className = 'avatar';
-  if (profile?.picture) {
-    const img = document.createElement('img');
-    img.src = profile.picture;
-    img.alt = displayName;
-    img.onerror = () => { img.remove(); avatar.textContent = displayName[0].toUpperCase(); };
-    avatar.appendChild(img);
-  } else {
-    avatar.textContent = displayName[0].toUpperCase();
-    avatar.style.background = pubkeyColor(event.pubkey);
-  }
+  const avatar = createAvatar(profile, displayName, event.pubkey);
 
   const authorEl = document.createElement('span');
   authorEl.className = 'event-pubkey';
@@ -963,7 +948,7 @@ function renderEvent(event) {
 
   const showRepliesBtn = document.createElement('button');
   showRepliesBtn.className = 'btn-reply';
-  showRepliesBtn.textContent = 'Replies';
+  showRepliesBtn.textContent = 'Show replies';
 
   actions.append(replyBtn, showRepliesBtn);
   card.append(content, actions);
@@ -985,9 +970,11 @@ function renderEvent(event) {
     const existing = replySubscriptions.get(event.id);
     if (existing) {
       repliesContainer.hidden = !repliesContainer.hidden;
+      showRepliesBtn.textContent = repliesContainer.hidden ? 'Show replies' : 'Hide replies';
     } else {
       if (!isAnyConnected()) return;
       repliesContainer.hidden = false;
+      showRepliesBtn.textContent = 'Hide replies';
       const loadingEl = document.createElement('div');
       loadingEl.className = 'replies-loading';
       loadingEl.textContent = 'Loading replies…';
@@ -1009,7 +996,7 @@ function createReplyForm(parentEvent) {
   form.hidden = true;
 
   const profile = store.profiles.get(parentEvent.pubkey);
-  const name = profile?.name || profile?.display_name || (parentEvent.pubkey.slice(0, 12) + '…');
+  const name = getDisplayName(profile, parentEvent.pubkey.slice(0, 12) + '…');
 
   const label = document.createElement('div');
   label.className = 'reply-form-label';
@@ -1060,13 +1047,7 @@ function createReplyForm(parentEvent) {
     resultMsg.className = 'result-msg';
 
     try {
-      const event = createEvent({
-        privkeyHex: store.keys.privkeyHex,
-        pubkeyHex: store.keys.pubkeyHex,
-        kind: 1,
-        tags: [['e', parentEvent.id], ['p', parentEvent.pubkey]],
-        content,
-      });
+      const event = createOwnEvent({ kind: 1, tags: [['e', parentEvent.id], ['p', parentEvent.pubkey]], content });
       await publishToAll(event);
       store.addEvent(event);
       textarea.value = '';
@@ -1090,20 +1071,9 @@ function renderReply(event) {
   meta.className = 'event-meta';
 
   const profile = store.profiles.get(event.pubkey);
-  const displayName = profile?.name || profile?.display_name || (event.pubkey.slice(0, 12) + '…');
+  const displayName = getDisplayName(profile, event.pubkey.slice(0, 12) + '…');
 
-  const avatar = document.createElement('div');
-  avatar.className = 'avatar';
-  if (profile?.picture) {
-    const img = document.createElement('img');
-    img.src = profile.picture;
-    img.alt = displayName;
-    img.onerror = () => { img.remove(); avatar.textContent = displayName[0].toUpperCase(); };
-    avatar.appendChild(img);
-  } else {
-    avatar.textContent = displayName[0].toUpperCase();
-    avatar.style.background = pubkeyColor(event.pubkey);
-  }
+  const avatar = createAvatar(profile, displayName, event.pubkey);
 
   const authorEl = document.createElement('span');
   authorEl.className = 'event-pubkey';
@@ -1134,12 +1104,13 @@ function formatTime(unixSec) {
 
 async function copyToClipboard(text, btn) {
   if (!text) return;
+  const orig = btn.textContent;
   try {
     await navigator.clipboard.writeText(text);
-    const orig = btn.textContent;
     btn.textContent = 'Copied!';
-    setTimeout(() => { btn.textContent = orig; }, 1500);
   } catch {
-    // Clipboard API not available (non-HTTPS dev environment, etc.)
+    btn.textContent = 'Copy failed';
+  } finally {
+    setTimeout(() => { btn.textContent = orig; }, 1500);
   }
 }
