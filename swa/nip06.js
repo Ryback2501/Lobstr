@@ -8,16 +8,7 @@ import { wordlist } from './vendor/bip39-wordlist.js';
 import { sha256 } from './vendor/sha256.mjs';
 import { bytesToHex } from './vendor/utils.mjs';
 import { schnorr, secp256k1 } from './vendor/secp256k1.mjs';
-
-// ── Utility ───────────────────────────────────────────────────────────────────
-
-function hexToBytes(hex) {
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
-  }
-  return bytes;
-}
+import { hexToBytes } from './nostr.js';
 
 function ser32(n) {
   return new Uint8Array([(n >>> 24) & 0xff, (n >>> 16) & 0xff, (n >>> 8) & 0xff, n & 0xff]);
