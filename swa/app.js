@@ -188,14 +188,14 @@ store.on('eventAdded', ({ event, insertIdx }) => {
   }
 });
 
-store.on('profiles', () => {
-  rerenderFeed();
+store.on('profiles', (pubkey) => {
+  if (store.events.some(e => e.pubkey === pubkey) || store.mentions.some(e => e.pubkey === pubkey)) rerenderFeed();
   renderFollows(store.follows);
   rerenderDmConvList();
 });
 
-store.on('nip05', () => {
-  rerenderFeed();
+store.on('nip05', (pubkey) => {
+  if (store.events.some(e => e.pubkey === pubkey) || store.mentions.some(e => e.pubkey === pubkey)) rerenderFeed();
   renderFollows(store.follows);
   rerenderDmConvList();
 });
