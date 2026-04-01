@@ -99,6 +99,13 @@ export const store = {
     emit('attestation', eventId);
   },
 
+  nip05: new Map(), // pubkey → verified NIP-05 identifier string
+
+  setNip05(pubkey, identifier) {
+    this.nip05.set(pubkey, identifier);
+    emit('nip05', pubkey);
+  },
+
   profiles: new Map(), // pubkey → { name, about, picture, _created_at }
 
   setProfile(pubkey, metadata) {
