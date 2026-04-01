@@ -210,7 +210,7 @@ store.on('attestation', (eventId) => {
 });
 
 store.on('dm', (event) => {
-  const contact = getDmContact(event);
+  const contact = getDmContact(event, store.keys?.pubkeyHex);
   rerenderDmConvList();
   if (contact === currentDmContact) {
     appendDmMessage(event);
@@ -940,8 +940,7 @@ function subscribeAttestations() {
 
 // ── Direct Messages ───────────────────────────────────────────────────────────
 
-function getDmContact(event) {
-  const myPubkey = store.keys?.pubkeyHex;
+function getDmContact(event, myPubkey) {
   if (!myPubkey) return null;
   return event.pubkey === myPubkey
     ? (event.tags.find(t => t[0] === 'p')?.[1] ?? null)
@@ -959,7 +958,7 @@ function handleDmEvent(event) {
 
 async function tryDecryptDm(event) {
   if (!store.keys || store.dmDecrypted.has(event.id)) return;
-  const contact = getDmContact(event);
+  const contact = getDmContact(event, store.keys.pubkeyHex);
   if (!contact) return;
   try {
     const plaintext = await decryptDm(store.keys.privkeyHex, contact, event.content);
@@ -972,9 +971,10 @@ async function tryDecryptDm(event) {
 function rerenderDmConvList() {
   if (!store.keys) return;
   dmConvsList.innerHTML = '';
+  const myPubkey = store.keys.pubkeyHex;
   const contacts = new Map(); // pubkey → latest event
   for (const event of store.dms) {
-    const contact = getDmContact(event);
+    const contact = getDmContact(event, myPubkey);
     if (!contact) continue;
     if (!contacts.has(contact) || event.created_at > contacts.get(contact).created_at) {
       contacts.set(contact, event);
@@ -1010,8 +1010,9 @@ function openDmThread(pubkey) {
   const displayName = getDisplayName(profile, pubkey.slice(0, 12) + '…');
   dmThreadTitle.textContent = `Conversation with ${displayName}`;
   dmMessages.innerHTML = '';
+  const myPubkey = store.keys?.pubkeyHex;
   const msgs = store.dms
-    .filter(e => getDmContact(e) === pubkey)
+    .filter(e => getDmContact(e, myPubkey) === pubkey)
     .slice().reverse(); // oldest first
   for (const event of msgs) appendDmMessage(event);
   dmThread.hidden = false;
@@ -1086,11 +1087,7 @@ function fetchMissingMetadata() {
     ...store.events.map(e => e.pubkey),
     ...store.mentions.map(e => e.pubkey),
     ...store.follows.map(f => f.pubkey),
-    ...store.dms.map(e =>
-      e.pubkey === myPubkey
-        ? (e.tags.find(t => t[0] === 'p')?.[1] ?? null)
-        : e.pubkey
-    ).filter(Boolean),
+    ...store.dms.map(e => getDmContact(e, myPubkey)).filter(Boolean),
   ];
   const unknown = [...new Set(allPubkeys)].filter(pk => !store.profiles.has(pk));
   if (!unknown.length) return;
