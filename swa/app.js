@@ -91,6 +91,7 @@ let ownProfileSubId = null;
 let followsSubId = null;
 let feedSubId = null;
 let metadataSubId = null;
+let metadataDebounceTimer = null;
 let idSearchSubId = null;
 let mentionsSubId = null;
 let attestationSubId = null;
@@ -779,6 +780,7 @@ function handleRelayStatus(url, status) {
     followsSubId = null;
     feedSubId = null;
     metadataSubId = null;
+    clearTimeout(metadataDebounceTimer);
     idSearchSubId = null;
     mentionsSubId = null;
     activeSubs.clear();
@@ -832,6 +834,7 @@ function setupSubscriptions() {
   followsSubId = null;
   feedSubId = null;
   metadataSubId = null;
+  clearTimeout(metadataDebounceTimer);
   mentionsSubId = null;
   attestationSubId = null;
   dmSubId = null;
@@ -1087,18 +1090,21 @@ dmSendBtn.addEventListener('click', async () => {
 });
 
 function fetchMissingMetadata() {
-  const myPubkey = store.keys?.pubkeyHex;
-  const allPubkeys = [
-    ...store.events.map(e => e.pubkey),
-    ...store.mentions.map(e => e.pubkey),
-    ...store.follows.map(f => f.pubkey),
-    ...store.dms.map(e => getDmContact(e, myPubkey)).filter(Boolean),
-  ];
-  const unknown = [...new Set(allPubkeys)].filter(pk => !store.profiles.has(pk));
-  if (!unknown.length) return;
-  if (metadataSubId) unsubscribeAll(metadataSubId);
-  metadataSubId = crypto.randomUUID();
-  subscribeAll(metadataSubId, [{ kinds: [0], authors: unknown, limit: unknown.length }]);
+  clearTimeout(metadataDebounceTimer);
+  metadataDebounceTimer = setTimeout(() => {
+    const myPubkey = store.keys?.pubkeyHex;
+    const allPubkeys = [
+      ...store.events.map(e => e.pubkey),
+      ...store.mentions.map(e => e.pubkey),
+      ...store.follows.map(f => f.pubkey),
+      ...store.dms.map(e => getDmContact(e, myPubkey)).filter(Boolean),
+    ];
+    const unknown = [...new Set(allPubkeys)].filter(pk => !store.profiles.has(pk));
+    if (!unknown.length) return;
+    if (metadataSubId) unsubscribeAll(metadataSubId);
+    metadataSubId = crypto.randomUUID();
+    subscribeAll(metadataSubId, [{ kinds: [0], authors: unknown, limit: unknown.length }]);
+  }, 300);
 }
 
 function rerenderRelayList() {
