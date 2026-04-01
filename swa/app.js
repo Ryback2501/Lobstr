@@ -42,7 +42,7 @@ const postResult = document.getElementById('post-result');
 const feedStatus = document.getElementById('feed-status');
 const eventsList = document.getElementById('events-list');
 const feedSinceSelect = document.getElementById('feed-since');
-const feedUntilInput = document.getElementById('feed-until');
+const feedUntilSelect = document.getElementById('feed-until');
 const feedIdSearch = document.getElementById('feed-id-search');
 const feedIdSearchBtn = document.getElementById('feed-id-search-btn');
 const feedHeader = document.getElementById('feed-header');
@@ -241,8 +241,8 @@ feedSinceSelect.addEventListener('change', () => {
   if (isAnyConnected()) subscribeToFeed();
 });
 
-feedUntilInput.addEventListener('change', () => {
-  untilFilter = parseInt(feedUntilInput.value) || 0;
+feedUntilSelect.addEventListener('change', () => {
+  untilFilter = parseInt(feedUntilSelect.value) || 0;
   if (isAnyConnected()) subscribeToFeed();
 });
 

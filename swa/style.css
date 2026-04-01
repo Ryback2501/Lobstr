@@ -652,10 +652,6 @@ details[open] > summary::before {
   color: var(--accent);
 }
 
-.follow-petname {
-  font-size: 0.78rem;
-  color: var(--muted);
-}
 
 .petname-input {
   font-size: 0.78rem;
