@@ -1392,16 +1392,10 @@ function createReplyForm(parentEvent) {
   });
 
   submitBtn.addEventListener('click', async () => {
-    if (!store.keys) {
-      resultMsg.textContent = 'No identity.';
+    if (!requireKeysAndRelay((msg) => {
+      resultMsg.textContent = msg;
       resultMsg.className = 'result-msg err';
-      return;
-    }
-    if (!isAnyConnected()) {
-      resultMsg.textContent = 'Not connected.';
-      resultMsg.className = 'result-msg err';
-      return;
-    }
+    })) return;
     const content = textarea.value.trim();
     if (!content) return;
 
