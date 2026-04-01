@@ -147,10 +147,9 @@ store.on('follows', (follows) => {
 });
 
 store.on('events', (events) => {
-  if (events.length === 0) return;
-  feedStatus.textContent = '';
   eventsList.innerHTML = '';
   for (const event of events) {
+    feedStatus.textContent = '';
     eventsList.appendChild(renderEvent(event));
   }
 });
@@ -844,13 +843,8 @@ function switchTab(tab) {
 
 function updateFeedTabs() {
   feedHeader.hidden = !isAnyConnected();
-  tabFollowing.hidden = store.follows.length === 0;
   tabMentions.hidden = !store.keys;
 
-  // If current tab is no longer valid, fall back to feed tab
-  if (feedActiveTab === 'following' && store.follows.length === 0) {
-    switchTab('feed');
-  }
   if (feedActiveTab === 'mentions' && !store.keys) {
     switchTab('feed');
   }
