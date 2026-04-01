@@ -59,8 +59,32 @@
         </div>
       </details>
 
+      <details id="mnemonic-section">
+        <summary>Mnemonic seed phrase (NIP-06)</summary>
+        <div class="field-group" style="margin-top: 0.75rem;">
+          <div id="mnemonic-display-wrapper" hidden>
+            <div class="warning-label">Write down these 12 words and keep them safe. They cannot be recovered.</div>
+            <div id="mnemonic-display" class="mnemonic-display"></div>
+            <div class="btn-row" style="margin-top: 0.5rem;">
+              <button id="copy-mnemonic-btn">Copy words</button>
+            </div>
+          </div>
+          <label style="margin-top: 0.5rem;">Import from mnemonic</label>
+          <textarea id="mnemonic-import" rows="2" placeholder="Enter 12 or 24 words separated by spaces"></textarea>
+          <div id="mnemonic-error" class="error-msg" hidden></div>
+          <div class="btn-row">
+            <button id="mnemonic-import-btn">Import mnemonic</button>
+          </div>
+        </div>
+      </details>
+
       <div class="btn-row">
         <button id="generate-btn" class="primary">Generate new keypair</button>
+        <select id="mnemonic-strength">
+          <option value="128">12 words</option>
+          <option value="256">24 words</option>
+        </select>
+        <button id="generate-mnemonic-btn">Generate from mnemonic</button>
       </div>
     </section>
 

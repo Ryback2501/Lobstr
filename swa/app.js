@@ -1,9 +1,10 @@
 import { generateKeypair, importPrivkey, createEvent, verifyEvent, encryptDm, decryptDm } from './nostr.js';
+import { generateMnemonic, validateMnemonic, deriveNostrKeypair } from './nip06.js';
 import { RelayConnection } from './relay.js';
 import { store } from './store.js';
 
 const VERSION = '0.0.2';
-const SUPPORTED_NIPS = ['01', '02', '03', '04', '05'];
+const SUPPORTED_NIPS = ['01', '02', '03', '04', '05', '06'];
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 
@@ -16,6 +17,16 @@ const importError = document.getElementById('import-error');
 const generateBtn = document.getElementById('generate-btn');
 const copyPubkeyBtn = document.getElementById('copy-pubkey-btn');
 const copyPrivkeyBtn = document.getElementById('copy-privkey-btn');
+
+const mnemonicStrengthSelect = document.getElementById('mnemonic-strength');
+const generateMnemonicBtn = document.getElementById('generate-mnemonic-btn');
+const mnemonicSection = document.getElementById('mnemonic-section');
+const mnemonicDisplayWrapper = document.getElementById('mnemonic-display-wrapper');
+const mnemonicDisplay = document.getElementById('mnemonic-display');
+const copyMnemonicBtn = document.getElementById('copy-mnemonic-btn');
+const mnemonicImport = document.getElementById('mnemonic-import');
+const mnemonicImportBtn = document.getElementById('mnemonic-import-btn');
+const mnemonicError = document.getElementById('mnemonic-error');
 
 const profileNameInput = document.getElementById('profile-name');
 const profileAboutInput = document.getElementById('profile-about');
@@ -253,6 +264,79 @@ importBtn.addEventListener('click', () => {
 
 copyPubkeyBtn.addEventListener('click', () => copyToClipboard(pubkeyDisplay.value, copyPubkeyBtn));
 copyPrivkeyBtn.addEventListener('click', () => copyToClipboard(privkeyDisplay.value, copyPrivkeyBtn));
+
+// ── NIP-06 mnemonic ───────────────────────────────────────────────────────────
+
+generateMnemonicBtn.addEventListener('click', async () => {
+  generateMnemonicBtn.disabled = true;
+  try {
+    const strength = parseInt(mnemonicStrengthSelect.value);
+    const mnemonic = generateMnemonic(strength);
+    const { privkeyHex, pubkeyHex } = await deriveNostrKeypair(mnemonic);
+    const keys = importPrivkey(privkeyHex);
+    store.setKeys(keys);
+    privkeyDisplayWrapper.hidden = true;
+    importError.hidden = true;
+    showMnemonic(mnemonic);
+    mnemonicSection.open = true;
+  } catch (err) {
+    mnemonicError.textContent = err.message;
+    mnemonicError.hidden = false;
+  } finally {
+    generateMnemonicBtn.disabled = false;
+  }
+});
+
+mnemonicImportBtn.addEventListener('click', async () => {
+  const mnemonic = mnemonicImport.value.trim().toLowerCase().replace(/\s+/g, ' ');
+  mnemonicError.hidden = true;
+
+  if (!validateMnemonic(mnemonic)) {
+    mnemonicError.textContent = 'Invalid mnemonic — check word count and spelling.';
+    mnemonicError.hidden = false;
+    return;
+  }
+
+  mnemonicImportBtn.disabled = true;
+  try {
+    const { privkeyHex } = await deriveNostrKeypair(mnemonic);
+    const keys = importPrivkey(privkeyHex);
+    store.setKeys(keys);
+    mnemonicImport.value = '';
+    privkeyDisplayWrapper.hidden = true;
+    importError.hidden = true;
+    mnemonicDisplayWrapper.hidden = true;
+  } catch (err) {
+    mnemonicError.textContent = err.message;
+    mnemonicError.hidden = false;
+  } finally {
+    mnemonicImportBtn.disabled = false;
+  }
+});
+
+copyMnemonicBtn.addEventListener('click', () => {
+  const words = [...mnemonicDisplay.querySelectorAll('.mnemonic-word')]
+    .map(el => el.querySelector('.mnemonic-word-text')?.textContent ?? '')
+    .join(' ');
+  copyToClipboard(words, copyMnemonicBtn);
+});
+
+function showMnemonic(mnemonic) {
+  mnemonicDisplay.innerHTML = '';
+  mnemonic.split(' ').forEach((word, i) => {
+    const chip = document.createElement('div');
+    chip.className = 'mnemonic-word';
+    const num = document.createElement('span');
+    num.className = 'mnemonic-word-num';
+    num.textContent = i + 1;
+    const text = document.createElement('span');
+    text.className = 'mnemonic-word-text';
+    text.textContent = word;
+    chip.append(num, text);
+    mnemonicDisplay.appendChild(chip);
+  });
+  mnemonicDisplayWrapper.hidden = false;
+}
 
 // ── Profile ───────────────────────────────────────────────────────────────────
 
