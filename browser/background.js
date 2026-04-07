@@ -7,8 +7,10 @@ import {
   decryptDm,
 } from './nostr.js';
 
-// Pending permission dialogs: requestId → { resolve, reject, windowId }
+// Pending permission dialogs: requestId → { resolve, reject, tabId, timer }
 const pendingRequests = new Map();
+
+const PERMISSION_TIMEOUT_MS = 35_000;
 
 // ── Message handler ───────────────────────────────────────────────────────────
 
@@ -32,12 +34,15 @@ async function handleNostrRequest({ method, params = [] }, sender) {
   const origin = senderOrigin(sender);
   if (!origin) throw new Error('Cannot determine request origin.');
 
+  const tabId = sender.tab?.id;
+  if (tabId == null) throw new Error('Cannot determine sender tab.');
+
   const { keys } = await chrome.storage.local.get({ keys: null });
   if (!keys) throw new Error('No identity configured. Open the Lobstr extension to set up your keys.');
 
   // getRelays does not require per-site permission (relay list is not sensitive)
   if (method !== 'getRelays') {
-    await checkPermission(origin, method, params);
+    await checkPermission(origin, method, params, tabId);
   }
 
   switch (method) {
@@ -94,13 +99,12 @@ function buildSignedEvent(keys, draft) {
 
 // ── Permission management ─────────────────────────────────────────────────────
 
-async function checkPermission(origin, method, params) {
+async function checkPermission(origin, method, params, tabId) {
   const { permissions } = await chrome.storage.local.get({ permissions: {} });
   const status = permissions[origin];
   if (status === 'allowed') return;
   if (status === 'denied') throw new Error(`Permission denied for ${origin}.`);
-  // Unknown origin — open approval dialog
-  return openConfirmDialog(origin, method, params);
+  return openConfirmDialog(origin, method, params, tabId);
 }
 
 function sanitizeParamsForDisplay(method, params) {
@@ -113,63 +117,58 @@ function sanitizeParamsForDisplay(method, params) {
   return {};
 }
 
-function openConfirmDialog(origin, method, params) {
+function openConfirmDialog(origin, method, params, tabId) {
   return new Promise((resolve, reject) => {
     const requestId = crypto.randomUUID();
 
-    chrome.storage.session.set({
-      [requestId]: { origin, method, displayParams: sanitizeParamsForDisplay(method, params) },
-    }).then(() => {
-      chrome.windows.create({
-        url:     chrome.runtime.getURL(`confirm.html?id=${requestId}`),
-        type:    'popup',
-        width:   440,
-        height:  320,
-        focused: true,
-      }, (win) => {
-        if (chrome.runtime.lastError || !win) {
-          // windows API unavailable (e.g. Firefox for Android) — deny for safety
-          chrome.storage.session.remove(requestId);
-          reject(new Error('Cannot open permission dialog. Manage permissions from the extension popup.'));
-          return;
-        }
-        pendingRequests.set(requestId, { resolve, reject, windowId: win.id });
-      });
-    }).catch(err => {
-      reject(new Error(`Failed to store permission request: ${err.message}`));
+    const timer = setTimeout(() => {
+      if (pendingRequests.has(requestId)) {
+        pendingRequests.delete(requestId);
+        reject(new Error('Permission request timed out.'));
+      }
+    }, PERMISSION_TIMEOUT_MS);
+
+    chrome.tabs.sendMessage(tabId, {
+      type:         'SHOW_PERMISSION_MODAL',
+      requestId,
+      origin,
+      method,
+      displayParams: sanitizeParamsForDisplay(method, params),
+    }, () => {
+      if (chrome.runtime.lastError) {
+        clearTimeout(timer);
+        reject(new Error('Cannot show permission dialog in this page.'));
+        return;
+      }
+      pendingRequests.set(requestId, { resolve, reject, tabId, timer });
     });
   });
 }
 
-async function handleConfirmResponse({ requestId, approved, remember }) {
+async function handleConfirmResponse({ requestId, approved, remember, origin }) {
   const pending = pendingRequests.get(requestId);
+  if (!pending) return; // timed out or tab closed before response
+
+  clearTimeout(pending.timer);
   pendingRequests.delete(requestId);
 
   if (remember) {
-    const stored = await chrome.storage.session.get(requestId);
-    const data = stored[requestId];
-    if (data) {
-      const { permissions } = await chrome.storage.local.get({ permissions: {} });
-      permissions[data.origin] = approved ? 'allowed' : 'denied';
-      await chrome.storage.local.set({ permissions });
-    }
+    const { permissions } = await chrome.storage.local.get({ permissions: {} });
+    permissions[origin] = approved ? 'allowed' : 'denied';
+    await chrome.storage.local.set({ permissions });
   }
-
-  await chrome.storage.session.remove(requestId);
-
-  if (!pending) return; // service worker was restarted while dialog was open
 
   if (approved) pending.resolve();
   else pending.reject(new Error('Permission denied by user.'));
 }
 
-// Reject pending requests when the confirm window is closed without responding
-chrome.windows.onRemoved.addListener((windowId) => {
+// Clean up pending requests when a tab is closed
+chrome.tabs.onRemoved.addListener((tabId) => {
   for (const [requestId, req] of pendingRequests) {
-    if (req.windowId === windowId) {
+    if (req.tabId === tabId) {
+      clearTimeout(req.timer);
       pendingRequests.delete(requestId);
-      chrome.storage.session.remove(requestId);
-      req.reject(new Error('Permission dialog was closed.'));
+      req.reject(new Error('Tab was closed.'));
     }
   }
 });
