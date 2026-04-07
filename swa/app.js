@@ -4,7 +4,7 @@ import { RelayConnection } from './relay.js';
 import { store } from './store.js';
 
 const VERSION = '0.0.2';
-const SUPPORTED_NIPS = ['01', '02', '03', '04', '05', '06'];
+const SUPPORTED_NIPS = ['01', '02', '03', '04', '05', '06', '07'];
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 
@@ -76,6 +76,11 @@ const dmCompose = document.getElementById('dm-compose');
 const dmSendBtn = document.getElementById('dm-send-btn');
 const dmResult = document.getElementById('dm-result');
 
+const nip07LoginBtn = document.getElementById('nip07-login-btn');
+const nip07Error = document.getElementById('nip07-error');
+const nip07Badge = document.getElementById('nip07-badge');
+const logoutBtn = document.getElementById('logout-btn');
+
 const infoBtn = document.getElementById('info-btn');
 const infoModal = document.getElementById('info-modal');
 const modalCloseBtn = document.getElementById('modal-close-btn');
@@ -105,6 +110,8 @@ let feedActiveTab = 'feed'; // 'feed' | 'following' | 'mentions'
 const replySubscriptions = new Map(); // eventId → { subId, container }
 const replySubIdToContainer = new Map(); // subId → container element
 const replyEventIds = new Map(); // subId → Set<eventId> (dedup across relays)
+
+let extensionMode = false; // true when logged in via window.nostr (NIP-07)
 
 // ── Info modal ────────────────────────────────────────────────────────────────
 
@@ -143,6 +150,8 @@ if (savedPrivkey) {
   }
 }
 
+updateIdentityUI();
+
 // Populate relay Map from store and auto-connect previously connected relays
 for (const url of store.relayUrls) {
   relays.set(url, { conn: null, status: 'disconnected' });
@@ -157,6 +166,7 @@ for (const url of store.connectedRelayUrls) {
 
 store.on('keys', (keys) => {
   pubkeyDisplay.value = keys ? keys.pubkeyHex : '';
+  updateIdentityUI();
   if (isAnyConnected()) setupSubscriptions();
 });
 
@@ -236,6 +246,7 @@ store.on('mentions', (events) => {
 // ── Key management ────────────────────────────────────────────────────────────
 
 generateBtn.addEventListener('click', () => {
+  extensionMode = false;
   const keys = generateKeypair();
   store.setKeys(keys);
   privkeyDisplay.value = keys.privkeyHex;
@@ -248,6 +259,7 @@ importBtn.addEventListener('click', () => {
   const hex = privkeyImport.value.trim();
   try {
     const keys = importPrivkey(hex);
+    extensionMode = false;
     store.setKeys(keys);
     privkeyDisplayWrapper.hidden = true;
     privkeyImport.value = '';
@@ -270,6 +282,7 @@ generateMnemonicBtn.addEventListener('click', async () => {
     const mnemonic = generateMnemonic(strength);
     const { privkeyHex } = await deriveNostrKeypair(mnemonic);
     const keys = importPrivkey(privkeyHex);
+    extensionMode = false;
     store.setKeys(keys);
     privkeyDisplayWrapper.hidden = true;
     importError.hidden = true;
@@ -297,6 +310,7 @@ mnemonicImportBtn.addEventListener('click', async () => {
   try {
     const { privkeyHex } = await deriveNostrKeypair(mnemonic);
     const keys = importPrivkey(privkeyHex);
+    extensionMode = false;
     store.setKeys(keys);
     mnemonicImport.value = '';
     privkeyDisplayWrapper.hidden = true;
@@ -334,6 +348,34 @@ function showMnemonic(mnemonic) {
   mnemonicDisplayWrapper.hidden = false;
 }
 
+// ── NIP-07 extension login ────────────────────────────────────────────────────
+
+nip07LoginBtn.addEventListener('click', async () => {
+  nip07Error.hidden = true;
+  if (!window.nostr) {
+    nip07Error.textContent = 'No Nostr extension detected. Install one (e.g. Alby, nos2x) and reload.';
+    nip07Error.hidden = false;
+    return;
+  }
+  nip07LoginBtn.disabled = true;
+  try {
+    const pubkeyHex = await window.nostr.getPublicKey();
+    if (!/^[0-9a-f]{64}$/.test(pubkeyHex)) throw new Error('Extension returned an invalid public key.');
+    extensionMode = true;
+    store.setKeys({ pubkeyHex });
+  } catch (err) {
+    nip07Error.textContent = err.message;
+    nip07Error.hidden = false;
+  } finally {
+    nip07LoginBtn.disabled = false;
+  }
+});
+
+logoutBtn.addEventListener('click', () => {
+  extensionMode = false;
+  store.setKeys(null);
+});
+
 // ── Profile ───────────────────────────────────────────────────────────────────
 
 profileSaveBtn.addEventListener('click', async () => {
@@ -350,7 +392,7 @@ profileSaveBtn.addEventListener('click', async () => {
   setProfileResult('Saving…', '');
 
   try {
-    const event = createOwnEvent({ kind: 0, tags: [], content: JSON.stringify(metadata) });
+    const event = await createOwnEvent({ kind: 0, tags: [], content: JSON.stringify(metadata) });
     await publishToAll(event);
     store.setProfile(store.keys.pubkeyHex, { ...metadata, _created_at: event.created_at });
     setProfileResult('Saved.', 'ok');
@@ -508,7 +550,7 @@ async function publishFollowList() {
     if (f.petname) tag.push(f.petname);
     return tag;
   });
-  const event = createOwnEvent({ kind: 3, tags, content: '' });
+  const event = await createOwnEvent({ kind: 3, tags, content: '' });
   return publishToAll(event);
 }
 
@@ -633,7 +675,7 @@ postBtn.addEventListener('click', async () => {
   setPostResult('Publishing…', '');
 
   try {
-    const event = createOwnEvent({ kind: 1, tags: [], content });
+    const event = await createOwnEvent({ kind: 1, tags: [], content });
     await publishToAll(event);
     store.addEvent(event);
     postContent.value = '';
@@ -961,7 +1003,13 @@ async function tryDecryptDm(event) {
   const contact = getDmContact(event, store.keys.pubkeyHex);
   if (!contact) return;
   try {
-    const plaintext = await decryptDm(store.keys.privkeyHex, contact, event.content);
+    let plaintext;
+    if (extensionMode) {
+      if (!window.nostr?.nip04) throw new Error('nip04 not supported');
+      plaintext = await window.nostr.nip04.decrypt(contact, event.content);
+    } else {
+      plaintext = await decryptDm(store.keys.privkeyHex, contact, event.content);
+    }
     store.setDmDecrypted(event.id, plaintext);
   } catch {
     store.setDmDecrypted(event.id, '[decryption failed]');
@@ -1068,8 +1116,14 @@ dmSendBtn.addEventListener('click', async () => {
   setResult(dmResult, 'Sending…', '');
 
   try {
-    const encrypted = await encryptDm(store.keys.privkeyHex, currentDmContact, content);
-    const event = createOwnEvent({ kind: 4, tags: [['p', currentDmContact]], content: encrypted });
+    let encrypted;
+    if (extensionMode) {
+      if (!window.nostr?.nip04) throw new Error('NIP-04 is not supported by the connected extension.');
+      encrypted = await window.nostr.nip04.encrypt(currentDmContact, content);
+    } else {
+      encrypted = await encryptDm(store.keys.privkeyHex, currentDmContact, content);
+    }
+    const event = await createOwnEvent({ kind: 4, tags: [['p', currentDmContact]], content: encrypted });
     await publishToAll(event);
     store.addDm(event);
     dmCompose.value = '';
@@ -1184,7 +1238,30 @@ function requireKeysAndRelay(errorFn) {
   return true;
 }
 
-function createOwnEvent({ kind, tags, content }) {
+function updateIdentityUI() {
+  const hasKeys = !!store.keys;
+  logoutBtn.hidden = !hasKeys;
+  nip07Badge.hidden = !extensionMode;
+  nip07LoginBtn.hidden = extensionMode;
+  nip07Error.hidden = true;
+  document.getElementById('privkey-section').hidden = extensionMode;
+  document.getElementById('mnemonic-section').hidden = extensionMode;
+  document.getElementById('local-key-btn-row').hidden = extensionMode;
+}
+
+async function createOwnEvent({ kind, tags, content }) {
+  if (extensionMode) {
+    if (!window.nostr) throw new Error('Nostr extension is no longer available.');
+    const signed = await window.nostr.signEvent({
+      created_at: Math.floor(Date.now() / 1000),
+      kind,
+      tags,
+      content,
+    });
+    if (signed.pubkey !== store.keys.pubkeyHex) throw new Error('Extension signed with a different key.');
+    if (!verifyEvent(signed)) throw new Error('Extension returned an invalid signature.');
+    return signed;
+  }
   return createEvent({ privkeyHex: store.keys.privkeyHex, pubkeyHex: store.keys.pubkeyHex, kind, tags, content });
 }
 
@@ -1407,7 +1484,7 @@ function createReplyForm(parentEvent) {
     resultMsg.className = 'result-msg';
 
     try {
-      const event = createOwnEvent({ kind: 1, tags: [['e', parentEvent.id], ['p', parentEvent.pubkey]], content });
+      const event = await createOwnEvent({ kind: 1, tags: [['e', parentEvent.id], ['p', parentEvent.pubkey]], content });
       await publishToAll(event);
       store.addEvent(event);
       textarea.value = '';

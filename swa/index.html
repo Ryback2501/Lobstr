@@ -40,6 +40,12 @@
         </div>
       </div>
 
+      <div id="nip07-section" class="field-group" style="margin-top: 0.75rem;">
+        <button id="nip07-login-btn">Login with extension (NIP-07)</button>
+        <div id="nip07-error" class="error-msg" hidden></div>
+        <div id="nip07-badge" class="nip07-badge" hidden>Connected via browser extension</div>
+      </div>
+
       <details id="privkey-section">
         <summary>Private key</summary>
         <div class="field-group" style="margin-top: 0.75rem;">
@@ -78,13 +84,16 @@
         </div>
       </details>
 
-      <div class="btn-row">
+      <div class="btn-row" id="local-key-btn-row">
         <button id="generate-btn" class="primary">Generate new keypair</button>
         <select id="mnemonic-strength">
           <option value="128">12 words</option>
           <option value="256">24 words</option>
         </select>
         <button id="generate-mnemonic-btn">Generate from mnemonic</button>
+      </div>
+      <div class="btn-row" style="margin-top: 0.25rem;">
+        <button id="logout-btn" hidden>Logout</button>
       </div>
     </section>
 

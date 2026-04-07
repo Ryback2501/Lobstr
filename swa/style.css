@@ -843,3 +843,20 @@ details[open] > summary::before {
 .btn-unfollow:hover {
   background: rgba(239, 68, 68, 0.1);
 }
+
+/* ── NIP-07 ── */
+
+.nip07-badge {
+  font-size: 0.78rem;
+  color: var(--accent);
+  padding: 0.2rem 0;
+}
+
+#logout-btn {
+  color: var(--error);
+  border-color: var(--error);
+}
+
+#logout-btn:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
