@@ -8,16 +8,7 @@ import { wordlist } from './vendor/bip39-wordlist.js';
 import { sha256 } from './vendor/sha256.mjs';
 import { bytesToHex } from './vendor/utils.mjs';
 import { schnorr, secp256k1 } from './vendor/secp256k1.mjs';
-
-// ── Utility ───────────────────────────────────────────────────────────────────
-
-function hexToBytes(hex) {
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
-  }
-  return bytes;
-}
+import { hexToBytes } from './nostr.js';
 
 function ser32(n) {
   return new Uint8Array([(n >>> 24) & 0xff, (n >>> 16) & 0xff, (n >>> 8) & 0xff, n & 0xff]);
@@ -33,6 +24,8 @@ async function hmacSha512(keyBytes, data) {
 const N = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141n;
 
 // ── BIP-39 ────────────────────────────────────────────────────────────────────
+
+const wordMap = new Map(wordlist.map((w, i) => [w, i]));
 
 export function generateMnemonic(strength = 128) {
   if (![128, 160, 192, 224, 256].includes(strength)) {
@@ -63,10 +56,10 @@ export function validateMnemonic(mnemonic) {
   const words = mnemonic.trim().toLowerCase().split(/\s+/);
   if (![12, 15, 18, 21, 24].includes(words.length)) return false;
   for (const w of words) {
-    if (!wordlist.includes(w)) return false;
+    if (!wordMap.has(w)) return false;
   }
   // Reconstruct and verify checksum
-  let bits = words.map(w => wordlist.indexOf(w).toString(2).padStart(11, '0')).join('');
+  let bits = words.map(w => wordMap.get(w).toString(2).padStart(11, '0')).join('');
   const totalBits = words.length * 11;
   const checksumBits = totalBits % 32 || 32; // always ENT/32 = MS/3
   const entropyBits = bits.slice(0, totalBits - checksumBits);

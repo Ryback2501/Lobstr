@@ -91,6 +91,7 @@ let ownProfileSubId = null;
 let followsSubId = null;
 let feedSubId = null;
 let metadataSubId = null;
+let metadataDebounceTimer = null;
 let idSearchSubId = null;
 let mentionsSubId = null;
 let attestationSubId = null;
@@ -156,12 +157,7 @@ for (const url of store.connectedRelayUrls) {
 
 store.on('keys', (keys) => {
   pubkeyDisplay.value = keys ? keys.pubkeyHex : '';
-  if (keys && isAnyConnected() && !mentionsSubId) {
-    mentionsSubId = crypto.randomUUID();
-    store.clearMentions();
-    subscribeAll(mentionsSubId, [{ kinds: [1], '#p': [keys.pubkeyHex], limit: 20 }]);
-    updateFeedTabs();
-  }
+  if (isAnyConnected()) setupSubscriptions();
 });
 
 store.on('follows', (follows) => {
@@ -188,14 +184,14 @@ store.on('eventAdded', ({ event, insertIdx }) => {
   }
 });
 
-store.on('profiles', () => {
-  rerenderFeed();
+store.on('profiles', (pubkey) => {
+  if (store.events.some(e => e.pubkey === pubkey) || store.mentions.some(e => e.pubkey === pubkey)) rerenderFeed();
   renderFollows(store.follows);
   rerenderDmConvList();
 });
 
-store.on('nip05', () => {
-  rerenderFeed();
+store.on('nip05', (pubkey) => {
+  if (store.events.some(e => e.pubkey === pubkey) || store.mentions.some(e => e.pubkey === pubkey)) rerenderFeed();
   renderFollows(store.follows);
   rerenderDmConvList();
 });
@@ -210,7 +206,7 @@ store.on('attestation', (eventId) => {
 });
 
 store.on('dm', (event) => {
-  const contact = getDmContact(event);
+  const contact = getDmContact(event, store.keys?.pubkeyHex);
   rerenderDmConvList();
   if (contact === currentDmContact) {
     appendDmMessage(event);
@@ -272,7 +268,7 @@ generateMnemonicBtn.addEventListener('click', async () => {
   try {
     const strength = parseInt(mnemonicStrengthSelect.value);
     const mnemonic = generateMnemonic(strength);
-    const { privkeyHex, pubkeyHex } = await deriveNostrKeypair(mnemonic);
+    const { privkeyHex } = await deriveNostrKeypair(mnemonic);
     const keys = importPrivkey(privkeyHex);
     store.setKeys(keys);
     privkeyDisplayWrapper.hidden = true;
@@ -467,9 +463,6 @@ function removeRelay(url) {
   disconnectRelay(url);
   relays.delete(url);
   store.setRelayUrls([...relays.keys()]);
-  const connected = store.connectedRelayUrls;
-  connected.delete(url);
-  store.setConnectedRelayUrls(connected);
   rerenderRelayList();
 }
 
@@ -483,7 +476,7 @@ followBtn.addEventListener('click', async () => {
     showFollowError('Must be a 64-character hex public key.');
     return;
   }
-  if (store.follows.find(f => f.pubkey === pubkey)) {
+  if (store.followedPubkeys.has(pubkey)) {
     showFollowError('Already following this key.');
     return;
   }
@@ -509,7 +502,12 @@ async function handleUnfollow(pubkey) {
 }
 
 async function publishFollowList() {
-  const tags = store.follows.map(f => ['p', f.pubkey, f.relay, f.petname]);
+  const tags = store.follows.map(f => {
+    const tag = ['p', f.pubkey];
+    if (f.relay || f.petname) tag.push(f.relay || '');
+    if (f.petname) tag.push(f.petname);
+    return tag;
+  });
   const event = createOwnEvent({ kind: 3, tags, content: '' });
   return publishToAll(event);
 }
@@ -709,9 +707,12 @@ function handleEOSE(subId) {
   }
 }
 
+function relayHostname(url) {
+  try { return new URL(url).hostname; } catch { return url; }
+}
+
 function handleClosed(url, subId, message) {
-  let hostname = url;
-  try { hostname = new URL(url).hostname; } catch { /* */ }
+  const hostname = relayHostname(url);
 
   const label = subId === feedSubId ? 'feed'
     : subId === followsSubId ? 'follows'
@@ -739,9 +740,7 @@ function handleClosed(url, subId, message) {
 }
 
 function handleNotice(url, message) {
-  let hostname = url;
-  try { hostname = new URL(url).hostname; } catch { /* */ }
-  relayNotice.textContent = `[${hostname}] ${message}`;
+  relayNotice.textContent = `[${relayHostname(url)}] ${message}`;
   relayNotice.hidden = false;
 }
 
@@ -773,6 +772,7 @@ function handleRelayStatus(url, status) {
     followsSubId = null;
     feedSubId = null;
     metadataSubId = null;
+    clearTimeout(metadataDebounceTimer);
     idSearchSubId = null;
     mentionsSubId = null;
     activeSubs.clear();
@@ -826,6 +826,7 @@ function setupSubscriptions() {
   followsSubId = null;
   feedSubId = null;
   metadataSubId = null;
+  clearTimeout(metadataDebounceTimer);
   mentionsSubId = null;
   attestationSubId = null;
   dmSubId = null;
@@ -894,7 +895,7 @@ function handleMetadataEvent(event) {
 }
 
 async function verifyNip05(pubkey, identifier) {
-  if (nip05Checked.has(pubkey)) return;
+  if (nip05Checked.has(pubkey) || store.nip05.has(pubkey)) return;
   nip05Checked.add(pubkey);
   const at = identifier.indexOf('@');
   if (at < 1) return;
@@ -911,7 +912,7 @@ async function verifyNip05(pubkey, identifier) {
       store.setNip05(pubkey, identifier);
     }
   } catch {
-    // Verification failed silently — nip05Checked prevents retries
+    nip05Checked.delete(pubkey); // allow retry on transient failures
   }
 }
 
@@ -939,8 +940,7 @@ function subscribeAttestations() {
 
 // ── Direct Messages ───────────────────────────────────────────────────────────
 
-function getDmContact(event) {
-  const myPubkey = store.keys?.pubkeyHex;
+function getDmContact(event, myPubkey) {
   if (!myPubkey) return null;
   return event.pubkey === myPubkey
     ? (event.tags.find(t => t[0] === 'p')?.[1] ?? null)
@@ -958,7 +958,7 @@ function handleDmEvent(event) {
 
 async function tryDecryptDm(event) {
   if (!store.keys || store.dmDecrypted.has(event.id)) return;
-  const contact = getDmContact(event);
+  const contact = getDmContact(event, store.keys.pubkeyHex);
   if (!contact) return;
   try {
     const plaintext = await decryptDm(store.keys.privkeyHex, contact, event.content);
@@ -971,9 +971,10 @@ async function tryDecryptDm(event) {
 function rerenderDmConvList() {
   if (!store.keys) return;
   dmConvsList.innerHTML = '';
+  const myPubkey = store.keys.pubkeyHex;
   const contacts = new Map(); // pubkey → latest event
   for (const event of store.dms) {
-    const contact = getDmContact(event);
+    const contact = getDmContact(event, myPubkey);
     if (!contact) continue;
     if (!contacts.has(contact) || event.created_at > contacts.get(contact).created_at) {
       contacts.set(contact, event);
@@ -1009,8 +1010,9 @@ function openDmThread(pubkey) {
   const displayName = getDisplayName(profile, pubkey.slice(0, 12) + '…');
   dmThreadTitle.textContent = `Conversation with ${displayName}`;
   dmMessages.innerHTML = '';
+  const myPubkey = store.keys?.pubkeyHex;
   const msgs = store.dms
-    .filter(e => getDmContact(e) === pubkey)
+    .filter(e => getDmContact(e, myPubkey) === pubkey)
     .slice().reverse(); // oldest first
   for (const event of msgs) appendDmMessage(event);
   dmThread.hidden = false;
@@ -1080,22 +1082,21 @@ dmSendBtn.addEventListener('click', async () => {
 });
 
 function fetchMissingMetadata() {
-  const myPubkey = store.keys?.pubkeyHex;
-  const allPubkeys = [
-    ...store.events.map(e => e.pubkey),
-    ...store.mentions.map(e => e.pubkey),
-    ...store.follows.map(f => f.pubkey),
-    ...store.dms.map(e =>
-      e.pubkey === myPubkey
-        ? (e.tags.find(t => t[0] === 'p')?.[1] ?? null)
-        : e.pubkey
-    ).filter(Boolean),
-  ];
-  const unknown = [...new Set(allPubkeys)].filter(pk => !store.profiles.has(pk));
-  if (!unknown.length) return;
-  if (metadataSubId) unsubscribeAll(metadataSubId);
-  metadataSubId = crypto.randomUUID();
-  subscribeAll(metadataSubId, [{ kinds: [0], authors: unknown }]);
+  clearTimeout(metadataDebounceTimer);
+  metadataDebounceTimer = setTimeout(() => {
+    const myPubkey = store.keys?.pubkeyHex;
+    const allPubkeys = [
+      ...store.events.map(e => e.pubkey),
+      ...store.mentions.map(e => e.pubkey),
+      ...store.follows.map(f => f.pubkey),
+      ...store.dms.map(e => getDmContact(e, myPubkey)).filter(Boolean),
+    ];
+    const unknown = [...new Set(allPubkeys)].filter(pk => !store.profiles.has(pk));
+    if (!unknown.length) return;
+    if (metadataSubId) unsubscribeAll(metadataSubId);
+    metadataSubId = crypto.randomUUID();
+    subscribeAll(metadataSubId, [{ kinds: [0], authors: unknown, limit: unknown.length }]);
+  }, 300);
 }
 
 function rerenderRelayList() {
@@ -1254,7 +1255,7 @@ function renderEvent(event) {
 
   const isOwnPost = store.keys?.pubkeyHex === event.pubkey;
   if (!isOwnPost) {
-    const alreadyFollowing = !!store.follows.find(f => f.pubkey === event.pubkey);
+    const alreadyFollowing = store.followedPubkeys.has(event.pubkey);
     const followEventBtn = document.createElement('button');
     followEventBtn.className = 'btn-follow-feed';
     followEventBtn.textContent = alreadyFollowing ? 'Following' : 'Follow';
@@ -1394,16 +1395,10 @@ function createReplyForm(parentEvent) {
   });
 
   submitBtn.addEventListener('click', async () => {
-    if (!store.keys) {
-      resultMsg.textContent = 'No identity.';
+    if (!requireKeysAndRelay((msg) => {
+      resultMsg.textContent = msg;
       resultMsg.className = 'result-msg err';
-      return;
-    }
-    if (!isAnyConnected()) {
-      resultMsg.textContent = 'Not connected.';
-      resultMsg.className = 'result-msg err';
-      return;
-    }
+    })) return;
     const content = textarea.value.trim();
     if (!content) return;
 
