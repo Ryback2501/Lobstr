@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Permission Request — Lobstr</title>
+  <link rel="stylesheet" href="popup.css">
+  <style>
+    body { width: 440px; padding: 1.25rem; }
+    .site  { font-weight: 600; color: var(--accent); word-break: break-all; }
+    .action-row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .detail { font-size: 0.75rem; color: var(--muted); word-break: break-all; }
+    .detail strong { color: var(--text); }
+    #deny-btn { color: var(--error); border-color: var(--error); }
+    #deny-btn:hover { background: rgba(239,68,68,0.1); }
+    .remember-row {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <section style="display:flex;flex-direction:column;gap:0.85rem;">
+    <div>
+      <p style="font-size:0.75rem;color:var(--muted);margin-bottom:0.2rem;">PERMISSION REQUEST</p>
+      <p id="origin-display" class="site"></p>
+    </div>
+    <p id="method-display" style="font-size:0.85rem;"></p>
+    <div id="detail-display"></div>
+    <div class="remember-row">
+      <input type="checkbox" id="remember">
+      <label for="remember">Remember this decision for this site</label>
+    </div>
+    <div class="action-row">
+      <button id="approve-btn" class="primary">Approve</button>
+      <button id="deny-btn">Deny</button>
+    </div>
+  </section>
+
+  <script type="module" src="confirm.js"></script>
+</body>
+</html>
