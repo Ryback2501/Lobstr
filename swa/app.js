@@ -157,12 +157,7 @@ for (const url of store.connectedRelayUrls) {
 
 store.on('keys', (keys) => {
   pubkeyDisplay.value = keys ? keys.pubkeyHex : '';
-  if (keys && isAnyConnected() && !mentionsSubId) {
-    mentionsSubId = crypto.randomUUID();
-    store.clearMentions();
-    subscribeAll(mentionsSubId, [{ kinds: [1], '#p': [keys.pubkeyHex], limit: 20 }]);
-    updateFeedTabs();
-  }
+  if (isAnyConnected()) setupSubscriptions();
 });
 
 store.on('follows', (follows) => {
@@ -273,7 +268,7 @@ generateMnemonicBtn.addEventListener('click', async () => {
   try {
     const strength = parseInt(mnemonicStrengthSelect.value);
     const mnemonic = generateMnemonic(strength);
-    const { privkeyHex, pubkeyHex } = await deriveNostrKeypair(mnemonic);
+    const { privkeyHex } = await deriveNostrKeypair(mnemonic);
     const keys = importPrivkey(privkeyHex);
     store.setKeys(keys);
     privkeyDisplayWrapper.hidden = true;
@@ -468,9 +463,6 @@ function removeRelay(url) {
   disconnectRelay(url);
   relays.delete(url);
   store.setRelayUrls([...relays.keys()]);
-  const connected = store.connectedRelayUrls;
-  connected.delete(url);
-  store.setConnectedRelayUrls(connected);
   rerenderRelayList();
 }
 
@@ -903,7 +895,7 @@ function handleMetadataEvent(event) {
 }
 
 async function verifyNip05(pubkey, identifier) {
-  if (nip05Checked.has(pubkey)) return;
+  if (nip05Checked.has(pubkey) || store.nip05.has(pubkey)) return;
   nip05Checked.add(pubkey);
   const at = identifier.indexOf('@');
   if (at < 1) return;
@@ -920,7 +912,7 @@ async function verifyNip05(pubkey, identifier) {
       store.setNip05(pubkey, identifier);
     }
   } catch {
-    // Verification failed silently — nip05Checked prevents retries
+    nip05Checked.delete(pubkey); // allow retry on transient failures
   }
 }
 

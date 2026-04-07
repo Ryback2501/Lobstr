@@ -35,6 +35,8 @@ export const store = {
 
   setKeys(keys) {
     this.keys = keys;
+    this.dms = [];
+    this.dmDecrypted = new Map();
     if (keys) {
       sessionStorage.setItem('privkeyHex', keys.privkeyHex);
     } else {
