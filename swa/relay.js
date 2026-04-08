@@ -1,8 +1,7 @@
 export class RelayConnection {
-  constructor(url, { onEvent, onOK, onEOSE, onClosed, onNotice, onStatus } = {}) {
+  constructor(url, { onEvent, onEOSE, onClosed, onNotice, onStatus } = {}) {
     this.url = url;
     this.onEvent = onEvent || (() => {});
-    this.onOK = onOK || (() => {});
     this.onEOSE = onEOSE || (() => {});
     this.onClosed = onClosed || (() => {});
     this.onNotice = onNotice || (() => {});
@@ -102,7 +101,6 @@ export class RelayConnection {
             pending.reject(new Error(message || 'Event rejected'));
           }
         }
-        this.onOK(eventId, accepted, message);
         break;
       }
       case 'EOSE': {

@@ -1,3 +1,5 @@
+import { classifyEvent } from './nostr.js';
+
 const MAX_EVENTS = 200;
 
 function sortedInsert(array, item) {
@@ -24,7 +26,7 @@ function emit(event, data) {
 }
 
 export const store = {
-  keys: null,
+  signer: null,
   relayUrls: JSON.parse(localStorage.getItem('relayUrls') || '["wss://relay.damus.io"]'),
   connectedRelayUrls: new Set(JSON.parse(localStorage.getItem('connectedRelayUrls') || '[]')),
   events: [],
@@ -33,16 +35,16 @@ export const store = {
 
   on,
 
-  setKeys(keys) {
-    this.keys = keys;
+  setSigner(signer) {
+    this.signer = signer;
     this.dms = [];
     this.dmDecrypted = new Map();
-    if (keys?.privkeyHex) {
-      sessionStorage.setItem('privkeyHex', keys.privkeyHex);
+    if (signer?.privkeyHex) {
+      sessionStorage.setItem('privkeyHex', signer.privkeyHex);
     } else {
       sessionStorage.removeItem('privkeyHex');
     }
-    emit('keys', keys);
+    emit('signer', signer);
   },
 
   setRelayUrls(urls) {
@@ -56,13 +58,10 @@ export const store = {
   },
 
   addEvent(event) {
-    if (event.kind >= 20000 && event.kind < 30000) return;
+    const classification = classifyEvent(event);
+    if (classification === 'ephemeral') return;
 
-    const isReplaceable = event.kind === 0 || event.kind === 3
-      || (event.kind >= 10000 && event.kind < 20000);
-    const isAddressable = event.kind >= 30000 && event.kind < 40000;
-
-    if (isReplaceable) {
+    if (classification === 'replaceable') {
       const idx = this.events.findIndex(
         e => e.pubkey === event.pubkey && e.kind === event.kind
       );
@@ -70,7 +69,7 @@ export const store = {
         if (event.created_at <= this.events[idx].created_at) return;
         this.events.splice(idx, 1);
       }
-    } else if (isAddressable) {
+    } else if (classification === 'addressable') {
       const dTag = event.tags.find(t => t[0] === 'd')?.[1] ?? '';
       const idx = this.events.findIndex(e => {
         const existingD = e.tags.find(t => t[0] === 'd')?.[1] ?? '';
