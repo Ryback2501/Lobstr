@@ -1,7 +1,14 @@
-import { generateKeypair, importPrivkey, createEvent, verifyEvent, encryptDm, decryptDm } from './nostr.js';
+import { generateKeypair, importPrivkey, verifyEvent } from './nostr.js';
 import { generateMnemonic, validateMnemonic, deriveNostrKeypair } from './nip06.js';
 import { RelayConnection } from './relay.js';
 import { store } from './store.js';
+import { LocalSigner, Nip07Signer } from './signer.js';
+import { verifyNip05 } from './nip05.js';
+import {
+  renderEvent, renderReply, renderFollowItem,
+  getDisplayName, formatTime, createNip05Badge, createOtsBadge,
+  isOwnEvent,
+} from './feedView.js';
 
 const VERSION = '0.0.2';
 const SUPPORTED_NIPS = ['01', '02', '03', '04', '05', '06', '07'];
@@ -92,6 +99,10 @@ const modalNipsList = document.getElementById('modal-nips-list');
 const relays = new Map(); // url → { conn: RelayConnection|null, status: string }
 const activeSubs = new Map(); // subId → filters (all live REQs, for re-subscribing new relays)
 
+// Handler registries — replaces the closed if/else dispatcher in handleEvent
+const kindHandlers = new Map(); // kind → fn(event, subId)
+const subIdHandlers = new Map(); // subId → fn(event)
+
 let ownProfileSubId = null;
 let followsSubId = null;
 let feedSubId = null;
@@ -111,7 +122,16 @@ const replySubscriptions = new Map(); // eventId → { subId, container }
 const replySubIdToContainer = new Map(); // subId → container element
 const replyEventIds = new Map(); // subId → Set<eventId> (dedup across relays)
 
-let extensionMode = false; // true when logged in via window.nostr (NIP-07)
+// ── Event handler registry setup ──────────────────────────────────────────────
+
+kindHandlers.set(0, (event, subId) => {
+  handleMetadataEvent(event);
+  if (subId === ownProfileSubId) populateProfileForm(event.pubkey);
+});
+
+kindHandlers.set(1040, (event) => handleAttestationEvent(event));
+
+kindHandlers.set(4, (event) => handleDmEvent(event));
 
 // ── Info modal ────────────────────────────────────────────────────────────────
 
@@ -143,7 +163,7 @@ const savedPrivkey = sessionStorage.getItem('privkeyHex');
 if (savedPrivkey) {
   try {
     const keys = importPrivkey(savedPrivkey);
-    store.keys = keys;
+    store.signer = new LocalSigner(keys); // set directly — no emit needed at startup
     pubkeyDisplay.value = keys.pubkeyHex;
   } catch {
     sessionStorage.removeItem('privkeyHex');
@@ -164,8 +184,8 @@ for (const url of store.connectedRelayUrls) {
 
 // ── Store subscriptions ───────────────────────────────────────────────────────
 
-store.on('keys', (keys) => {
-  pubkeyDisplay.value = keys ? keys.pubkeyHex : '';
+store.on('signer', (signer) => {
+  pubkeyDisplay.value = signer ? signer.pubkeyHex : '';
   updateIdentityUI();
   if (isAnyConnected()) setupSubscriptions();
 });
@@ -186,7 +206,7 @@ store.on('events', () => {
 
 store.on('eventAdded', ({ event, insertIdx }) => {
   feedStatus.textContent = '';
-  const card = renderEvent(event);
+  const card = renderEvent(event, makeStoreSlice(), makeRenderCallbacks());
   const ref = eventsList.children[insertIdx];
   eventsList.insertBefore(card, ref ?? null);
   while (eventsList.children.length > store.events.length) {
@@ -216,7 +236,7 @@ store.on('attestation', (eventId) => {
 });
 
 store.on('dm', (event) => {
-  const contact = getDmContact(event, store.keys?.pubkeyHex);
+  const contact = getDmContact(event, store.signer?.pubkeyHex);
   rerenderDmConvList();
   if (contact === currentDmContact) {
     appendDmMessage(event);
@@ -239,16 +259,16 @@ store.on('mentions', (events) => {
   mentionsStatus.hidden = feedActiveTab !== 'mentions' || events.length > 0;
   mentionsList.innerHTML = '';
   for (const event of events) {
-    mentionsList.appendChild(renderEvent(event));
+    mentionsList.appendChild(renderEvent(event, makeStoreSlice(), makeRenderCallbacks()));
   }
 });
 
 // ── Key management ────────────────────────────────────────────────────────────
 
 generateBtn.addEventListener('click', () => {
-  extensionMode = false;
   const keys = generateKeypair();
-  store.setKeys(keys);
+  const signer = new LocalSigner(keys);
+  store.setSigner(signer);
   privkeyDisplay.value = keys.privkeyHex;
   privkeyDisplayWrapper.hidden = false;
   importError.hidden = true;
@@ -259,8 +279,8 @@ importBtn.addEventListener('click', () => {
   const hex = privkeyImport.value.trim();
   try {
     const keys = importPrivkey(hex);
-    extensionMode = false;
-    store.setKeys(keys);
+    const signer = new LocalSigner(keys);
+    store.setSigner(signer);
     privkeyDisplayWrapper.hidden = true;
     privkeyImport.value = '';
     importError.hidden = true;
@@ -282,8 +302,8 @@ generateMnemonicBtn.addEventListener('click', async () => {
     const mnemonic = generateMnemonic(strength);
     const { privkeyHex } = await deriveNostrKeypair(mnemonic);
     const keys = importPrivkey(privkeyHex);
-    extensionMode = false;
-    store.setKeys(keys);
+    const signer = new LocalSigner(keys);
+    store.setSigner(signer);
     privkeyDisplayWrapper.hidden = true;
     importError.hidden = true;
     showMnemonic(mnemonic);
@@ -310,8 +330,8 @@ mnemonicImportBtn.addEventListener('click', async () => {
   try {
     const { privkeyHex } = await deriveNostrKeypair(mnemonic);
     const keys = importPrivkey(privkeyHex);
-    extensionMode = false;
-    store.setKeys(keys);
+    const signer = new LocalSigner(keys);
+    store.setSigner(signer);
     mnemonicImport.value = '';
     privkeyDisplayWrapper.hidden = true;
     importError.hidden = true;
@@ -359,10 +379,8 @@ nip07LoginBtn.addEventListener('click', async () => {
   }
   nip07LoginBtn.disabled = true;
   try {
-    const pubkeyHex = await window.nostr.getPublicKey();
-    if (!/^[0-9a-f]{64}$/.test(pubkeyHex)) throw new Error('Extension returned an invalid public key.');
-    extensionMode = true;
-    store.setKeys({ pubkeyHex });
+    const signer = await new Nip07Signer(window.nostr).init();
+    store.setSigner(signer);
   } catch (err) {
     nip07Error.textContent = err.message;
     nip07Error.hidden = false;
@@ -372,8 +390,7 @@ nip07LoginBtn.addEventListener('click', async () => {
 });
 
 logoutBtn.addEventListener('click', () => {
-  extensionMode = false;
-  store.setKeys(null);
+  store.setSigner(null);
 });
 
 // ── Profile ───────────────────────────────────────────────────────────────────
@@ -394,7 +411,7 @@ profileSaveBtn.addEventListener('click', async () => {
   try {
     const event = await createOwnEvent({ kind: 0, tags: [], content: JSON.stringify(metadata) });
     await publishToAll(event);
-    store.setProfile(store.keys.pubkeyHex, { ...metadata, _created_at: event.created_at });
+    store.setProfile(store.signer.pubkeyHex, { ...metadata, _created_at: event.created_at });
     setProfileResult('Saved.', 'ok');
   } catch (err) {
     setProfileResult(err.message, 'err');
@@ -441,6 +458,7 @@ feedIdSearchBtn.addEventListener('click', () => {
   }
   if (idSearchSubId) unsubscribeAll(idSearchSubId);
   idSearchSubId = crypto.randomUUID();
+  subIdHandlers.set(idSearchSubId, (event) => store.addEvent(event));
   feedStatus.textContent = 'Searching…';
   subscribeAll(idSearchSubId, [{ ids: [id], limit: 1 }]);
 });
@@ -564,95 +582,23 @@ function handleFollowListEvent(event) {
 function renderFollows(follows) {
   followsList.innerHTML = '';
   for (const f of follows) {
-    followsList.appendChild(renderFollowItem(f));
+    followsList.appendChild(renderFollowItem(f,
+      { profiles: store.profiles, nip05: store.nip05 },
+      {
+        onUnfollow: handleUnfollow,
+        onPetnameChange: async (entry, newPetname) => {
+          entry.petname = newPetname;
+          try { await publishFollowList(); } catch { /* ignore */ }
+        },
+        onRelayChange: async (entry, newRelay) => {
+          entry.relay = newRelay;
+          try { await publishFollowList(); } catch { /* ignore */ }
+        },
+        isValidRelayUrl,
+        bindSaveOnBlurOrEnter,
+      }
+    ));
   }
-}
-
-function getDisplayName(profile, fallback) {
-  return profile?.name || profile?.display_name || fallback;
-}
-
-function createAvatar(profile, displayName, pubkey) {
-  const avatar = document.createElement('div');
-  avatar.className = 'avatar';
-  if (profile?.picture) {
-    const img = document.createElement('img');
-    img.src = profile.picture;
-    img.alt = displayName;
-    img.onerror = () => { img.remove(); avatar.textContent = (displayName[0] || '?').toUpperCase(); };
-    avatar.appendChild(img);
-  } else {
-    avatar.textContent = (displayName[0] || '?').toUpperCase();
-    avatar.style.background = pubkeyColor(pubkey);
-  }
-  return avatar;
-}
-
-function renderFollowItem(f) {
-  const item = document.createElement('div');
-  item.className = 'follow-item';
-
-  const profile = store.profiles.get(f.pubkey);
-  const displayName = getDisplayName(profile, f.petname || (f.pubkey.slice(0, 12) + '…'));
-
-  const avatar = createAvatar(profile, displayName, f.pubkey);
-
-  const info = document.createElement('div');
-  info.className = 'follow-info';
-
-  const nameEl = document.createElement('span');
-  nameEl.className = 'follow-pubkey';
-  nameEl.textContent = displayName;
-  nameEl.title = f.pubkey;
-  info.appendChild(nameEl);
-  if (store.nip05.has(f.pubkey)) info.appendChild(createNip05Badge(store.nip05.get(f.pubkey)));
-
-  const petnameInput = document.createElement('input');
-  petnameInput.type = 'text';
-  petnameInput.className = 'petname-input';
-  petnameInput.value = f.petname || '';
-  petnameInput.placeholder = 'Add petname…';
-
-  async function savePetname() {
-    const newPetname = petnameInput.value.trim();
-    if (newPetname === (f.petname || '')) return;
-    f.petname = newPetname;
-    try { await publishFollowList(); } catch { /* ignore */ }
-  }
-
-  bindSaveOnBlurOrEnter(petnameInput, savePetname);
-
-  const relayInput = document.createElement('input');
-  relayInput.type = 'text';
-  relayInput.className = 'petname-input';
-  relayInput.value = f.relay || '';
-  relayInput.placeholder = 'Relay hint (wss://…)';
-
-  async function saveRelay() {
-    const newRelay = relayInput.value.trim();
-    if (newRelay === (f.relay || '')) return;
-    if (newRelay && !isValidRelayUrl(newRelay)) {
-      relayInput.value = f.relay || '';
-      return;
-    }
-    f.relay = newRelay;
-    try { await publishFollowList(); } catch { /* ignore */ }
-  }
-
-  bindSaveOnBlurOrEnter(relayInput, saveRelay);
-
-  const inputRow = document.createElement('div');
-  inputRow.className = 'input-row';
-  inputRow.append(petnameInput, relayInput);
-  info.appendChild(inputRow); 
-
-  const unfollowBtn = document.createElement('button');
-  unfollowBtn.className = 'btn-unfollow';
-  unfollowBtn.textContent = 'Unfollow';
-  unfollowBtn.addEventListener('click', () => handleUnfollow(f.pubkey));
-
-  item.append(avatar, info, unfollowBtn);
-  return item;
 }
 
 function showFollowError(msg) {
@@ -692,29 +638,22 @@ postBtn.addEventListener('click', async () => {
 
 function handleEvent(subId, event) {
   if (!verifyEvent(event)) return;
+
+  // kind 0 is always processed regardless of which subscription delivered it
   if (event.kind === 0) {
-    handleMetadataEvent(event);
-    if (subId === ownProfileSubId) populateProfileForm(event.pubkey);
-  } else if (subId === followsSubId && event.kind === 3) {
-    handleFollowListEvent(event);
-  } else if (subId === feedSubId || subId === idSearchSubId) {
-    store.addEvent(event);
-  } else if (event.kind === 1040) {
-    handleAttestationEvent(event);
-  } else if (event.kind === 4) {
-    handleDmEvent(event);
-  } else if (subId === mentionsSubId) {
-    store.addMention(event);
-  } else if (replySubIdToContainer.has(subId)) {
-    const seen = replyEventIds.get(subId);
-    if (seen && !seen.has(event.id)) {
-      seen.add(event.id);
-      const container = replySubIdToContainer.get(subId);
-      container.querySelector('.replies-loading')?.remove();
-      container.querySelector('.replies-empty')?.remove();
-      container.appendChild(renderReply(event));
-    }
+    kindHandlers.get(0)(event, subId);
+    return;
   }
+
+  // subId-specific handler takes priority
+  if (subIdHandlers.has(subId)) {
+    subIdHandlers.get(subId)(event);
+    return;
+  }
+
+  // fall back to kind handler
+  const kh = kindHandlers.get(event.kind);
+  if (kh) kh(event, subId);
 }
 
 function handleEOSE(subId) {
@@ -818,6 +757,7 @@ function handleRelayStatus(url, status) {
     idSearchSubId = null;
     mentionsSubId = null;
     activeSubs.clear();
+    subIdHandlers.clear();
     attestationSubId = null;
     dmSubId = null;
     replySubscriptions.clear();
@@ -846,6 +786,7 @@ function subscribeAll(subId, filters) {
 
 function unsubscribeAll(subId) {
   activeSubs.delete(subId);
+  subIdHandlers.delete(subId);
   for (const { conn, status } of relays.values()) {
     if (status === 'connected' && conn) conn.unsubscribe(subId);
   }
@@ -864,6 +805,7 @@ async function publishToAll(event) {
 
 function setupSubscriptions() {
   activeSubs.clear();
+  subIdHandlers.clear();
   ownProfileSubId = null;
   followsSubId = null;
   feedSubId = null;
@@ -874,21 +816,25 @@ function setupSubscriptions() {
   dmSubId = null;
   idSearchSubId = null;
 
-  if (store.keys) {
+  if (store.signer) {
     ownProfileSubId = crypto.randomUUID();
-    subscribeAll(ownProfileSubId, [{ kinds: [0], authors: [store.keys.pubkeyHex], limit: 1 }]);
+    // kind 0 is handled by the global kindHandlers.get(0) — no subId handler needed
+    subscribeAll(ownProfileSubId, [{ kinds: [0], authors: [store.signer.pubkeyHex], limit: 1 }]);
 
     followsSubId = crypto.randomUUID();
+    subIdHandlers.set(followsSubId, (event) => { if (event.kind === 3) handleFollowListEvent(event); });
     followsStatus.textContent = 'Loading follow list…';
-    subscribeAll(followsSubId, [{ kinds: [3], authors: [store.keys.pubkeyHex], limit: 1 }]);
+    subscribeAll(followsSubId, [{ kinds: [3], authors: [store.signer.pubkeyHex], limit: 1 }]);
 
     mentionsSubId = crypto.randomUUID();
-    subscribeAll(mentionsSubId, [{ kinds: [1], '#p': [store.keys.pubkeyHex], limit: 20 }]);
+    subIdHandlers.set(mentionsSubId, (event) => store.addMention(event));
+    subscribeAll(mentionsSubId, [{ kinds: [1], '#p': [store.signer.pubkeyHex], limit: 20 }]);
 
+    // kind 4 is handled globally by kindHandlers — dmSubId just subscribes the filter
     dmSubId = crypto.randomUUID();
     subscribeAll(dmSubId, [
-      { kinds: [4], '#p': [store.keys.pubkeyHex], limit: 50 },
-      { kinds: [4], authors: [store.keys.pubkeyHex], limit: 50 },
+      { kinds: [4], '#p': [store.signer.pubkeyHex], limit: 50 },
+      { kinds: [4], authors: [store.signer.pubkeyHex], limit: 50 },
     ]);
   }
 
@@ -908,13 +854,14 @@ function subscribeToFeed() {
   }
   if (feedSubId) unsubscribeAll(feedSubId);
   feedSubId = crypto.randomUUID();
+  subIdHandlers.set(feedSubId, (event) => store.addEvent(event));
   store.clearEvents();
   feedStatus.textContent = 'Loading events…';
   subscribeAll(feedSubId, [buildFeedFilter()]);
 }
 
-function buildFeedFilter() {
-  const filter = { kinds: [1], limit: 20 };
+function buildFeedFilter(kinds = [1]) {
+  const filter = { kinds, limit: 20 };
   if (feedActiveTab === 'following' && store.follows.length > 0) {
     filter.authors = store.follows.map(f => f.pubkey);
   }
@@ -929,32 +876,20 @@ function handleMetadataEvent(event) {
     const existing = store.profiles.get(event.pubkey);
     if (!existing || event.created_at > existing._created_at) {
       store.setProfile(event.pubkey, { ...metadata, _created_at: event.created_at });
-      if (metadata.nip05) verifyNip05(event.pubkey, metadata.nip05);
+      if (metadata.nip05) handleVerifyNip05(event.pubkey, metadata.nip05);
     }
   } catch {
     // Ignore invalid JSON in kind-0 content
   }
 }
 
-async function verifyNip05(pubkey, identifier) {
-  if (nip05Checked.has(pubkey) || store.nip05.has(pubkey)) return;
+async function handleVerifyNip05(pubkey, identifier) {
+  if (nip05Checked.has(pubkey)) return;
   nip05Checked.add(pubkey);
-  const at = identifier.indexOf('@');
-  if (at < 1) return;
-  const local = identifier.slice(0, at).toLowerCase();
-  const domain = identifier.slice(at + 1).toLowerCase();
-  if (!local || !domain) return;
   try {
-    const url = new URL(`https://${domain}/.well-known/nostr.json`);
-    url.searchParams.set('name', local);
-    const res = await fetch(url.toString(), { signal: AbortSignal.timeout(5000) });
-    if (!res.ok) return;
-    const data = await res.json();
-    if (typeof data?.names?.[local] === 'string' && data.names[local].toLowerCase() === pubkey.toLowerCase()) {
-      store.setNip05(pubkey, identifier);
-    }
+    await verifyNip05(pubkey, identifier, store);
   } catch {
-    nip05Checked.delete(pubkey); // allow retry on transient failures
+    nip05Checked.delete(pubkey); // allow retry on transient failure
   }
 }
 
@@ -990,8 +925,8 @@ function getDmContact(event, myPubkey) {
 }
 
 function handleDmEvent(event) {
-  if (!store.keys) return;
-  const myPubkey = store.keys.pubkeyHex;
+  if (!store.signer) return;
+  const myPubkey = store.signer.pubkeyHex;
   const isOutgoing = event.pubkey === myPubkey;
   const isIncoming = event.tags.some(t => t[0] === 'p' && t[1] === myPubkey);
   if (!isOutgoing && !isIncoming) return;
@@ -999,17 +934,11 @@ function handleDmEvent(event) {
 }
 
 async function tryDecryptDm(event) {
-  if (!store.keys || store.dmDecrypted.has(event.id)) return;
-  const contact = getDmContact(event, store.keys.pubkeyHex);
+  if (!store.signer || store.dmDecrypted.has(event.id)) return;
+  const contact = getDmContact(event, store.signer.pubkeyHex);
   if (!contact) return;
   try {
-    let plaintext;
-    if (extensionMode) {
-      if (!window.nostr?.nip04) throw new Error('nip04 not supported');
-      plaintext = await window.nostr.nip04.decrypt(contact, event.content);
-    } else {
-      plaintext = await decryptDm(store.keys.privkeyHex, contact, event.content);
-    }
+    const plaintext = await store.signer.decrypt(contact, event.content);
     store.setDmDecrypted(event.id, plaintext);
   } catch {
     store.setDmDecrypted(event.id, '[decryption failed]');
@@ -1017,9 +946,9 @@ async function tryDecryptDm(event) {
 }
 
 function rerenderDmConvList() {
-  if (!store.keys) return;
+  if (!store.signer) return;
   dmConvsList.innerHTML = '';
-  const myPubkey = store.keys.pubkeyHex;
+  const myPubkey = store.signer.pubkeyHex;
   const contacts = new Map(); // pubkey → latest event
   for (const event of store.dms) {
     const contact = getDmContact(event, myPubkey);
@@ -1058,7 +987,7 @@ function openDmThread(pubkey) {
   const displayName = getDisplayName(profile, pubkey.slice(0, 12) + '…');
   dmThreadTitle.textContent = `Conversation with ${displayName}`;
   dmMessages.innerHTML = '';
-  const myPubkey = store.keys?.pubkeyHex;
+  const myPubkey = store.signer?.pubkeyHex;
   const msgs = store.dms
     .filter(e => getDmContact(e, myPubkey) === pubkey)
     .slice().reverse(); // oldest first
@@ -1069,8 +998,8 @@ function openDmThread(pubkey) {
 }
 
 function appendDmMessage(event) {
-  if (!store.keys) return;
-  const isOutgoing = event.pubkey === store.keys.pubkeyHex;
+  if (!store.signer) return;
+  const isOutgoing = event.pubkey === store.signer.pubkeyHex;
   const decrypted = store.dmDecrypted.get(event.id);
 
   const wrapper = document.createElement('div');
@@ -1116,13 +1045,7 @@ dmSendBtn.addEventListener('click', async () => {
   setResult(dmResult, 'Sending…', '');
 
   try {
-    let encrypted;
-    if (extensionMode) {
-      if (!window.nostr?.nip04) throw new Error('NIP-04 is not supported by the connected extension.');
-      encrypted = await window.nostr.nip04.encrypt(currentDmContact, content);
-    } else {
-      encrypted = await encryptDm(store.keys.privkeyHex, currentDmContact, content);
-    }
+    const encrypted = await store.signer.encrypt(currentDmContact, content);
     const event = await createOwnEvent({ kind: 4, tags: [['p', currentDmContact]], content: encrypted });
     await publishToAll(event);
     store.addDm(event);
@@ -1138,7 +1061,7 @@ dmSendBtn.addEventListener('click', async () => {
 function fetchMissingMetadata() {
   clearTimeout(metadataDebounceTimer);
   metadataDebounceTimer = setTimeout(() => {
-    const myPubkey = store.keys?.pubkeyHex;
+    const myPubkey = store.signer?.pubkeyHex;
     const allPubkeys = [
       ...store.events.map(e => e.pubkey),
       ...store.mentions.map(e => e.pubkey),
@@ -1200,7 +1123,7 @@ function rerenderFeed() {
   if (!store.events.length) return;
   eventsList.innerHTML = '';
   for (const event of store.events) {
-    eventsList.appendChild(renderEvent(event));
+    eventsList.appendChild(renderEvent(event, makeStoreSlice(), makeRenderCallbacks()));
   }
 }
 
@@ -1220,49 +1143,34 @@ function switchTab(tab) {
 
 function updateFeedTabs() {
   feedHeader.hidden = !isAnyConnected();
-  tabMentions.hidden = !store.keys;
+  tabMentions.hidden = !store.signer;
 
-  if (feedActiveTab === 'mentions' && !store.keys) {
+  if (feedActiveTab === 'mentions' && !store.signer) {
     switchTab('feed');
   }
 }
 
-function pubkeyColor(pubkey) {
-  const colors = ['#7c3aed', '#0891b2', '#059669', '#d97706', '#dc2626', '#db2777', '#6366f1'];
-  return colors[parseInt(pubkey.slice(0, 2), 16) % colors.length];
-}
-
 function requireKeysAndRelay(errorFn) {
-  if (!store.keys) { errorFn('Generate or import a keypair first.'); return false; }
+  if (!store.signer) { errorFn('Generate or import a keypair first.'); return false; }
   if (!isAnyConnected()) { errorFn('Connect to a relay first.'); return false; }
   return true;
 }
 
 function updateIdentityUI() {
-  const hasKeys = !!store.keys;
+  const hasKeys = !!store.signer;
+  const isNip07 = store.signer instanceof Nip07Signer;
   logoutBtn.hidden = !hasKeys;
-  nip07Badge.hidden = !extensionMode;
-  nip07LoginBtn.hidden = extensionMode;
+  nip07Badge.hidden = !isNip07;
+  nip07LoginBtn.hidden = isNip07;
   nip07Error.hidden = true;
-  document.getElementById('privkey-section').hidden = extensionMode;
-  document.getElementById('mnemonic-section').hidden = extensionMode;
-  document.getElementById('local-key-btn-row').hidden = extensionMode;
+  document.getElementById('privkey-section').hidden = isNip07;
+  document.getElementById('mnemonic-section').hidden = isNip07;
+  document.getElementById('local-key-btn-row').hidden = isNip07;
 }
 
 async function createOwnEvent({ kind, tags, content }) {
-  if (extensionMode) {
-    if (!window.nostr) throw new Error('Nostr extension is no longer available.');
-    const signed = await window.nostr.signEvent({
-      created_at: Math.floor(Date.now() / 1000),
-      kind,
-      tags,
-      content,
-    });
-    if (signed.pubkey !== store.keys.pubkeyHex) throw new Error('Extension signed with a different key.');
-    if (!verifyEvent(signed)) throw new Error('Extension returned an invalid signature.');
-    return signed;
-  }
-  return createEvent({ privkeyHex: store.keys.privkeyHex, pubkeyHex: store.keys.pubkeyHex, kind, tags, content });
+  if (!store.signer) throw new Error('No identity loaded.');
+  return store.signer.signEvent({ created_at: Math.floor(Date.now() / 1000), kind, tags, content });
 }
 
 function isValidRelayUrl(url) {
@@ -1274,25 +1182,6 @@ function bindSaveOnBlurOrEnter(input, fn) {
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') input.blur(); });
 }
 
-function createNip05Badge(identifier) {
-  const badge = document.createElement('span');
-  badge.className = 'nip05-badge';
-  badge.textContent = '✓ ' + identifier;
-  badge.title = `NIP-05 verified: ${identifier}`;
-  return badge;
-}
-
-function createOtsBadge() {
-  const badge = document.createElement('a');
-  badge.className = 'ots-badge';
-  badge.textContent = '⏱ OTS';
-  badge.title = 'OpenTimestamps attestation';
-  badge.href = 'https://ots.tools/';
-  badge.target = '_blank';
-  badge.rel = 'noopener noreferrer';
-  return badge;
-}
-
 function setResult(el, msg, cls) {
   el.textContent = msg;
   el.className = 'result-msg ' + cls;
@@ -1301,243 +1190,68 @@ function setResult(el, msg, cls) {
 function setPostResult(msg, cls) { setResult(postResult, msg, cls); }
 function setProfileResult(msg, cls) { setResult(profileResult, msg, cls); }
 
-function renderEvent(event) {
-  const card = document.createElement('div');
-  card.className = 'event-card';
-  card.dataset.eventId = event.id;
+// ── Store slice + callback factories for render functions ─────────────────────
 
-  const meta = document.createElement('div');
-  meta.className = 'event-meta';
-
-  const profile = store.profiles.get(event.pubkey);
-  const displayName = getDisplayName(profile, event.pubkey.slice(0, 12) + '…');
-
-  const avatar = createAvatar(profile, displayName, event.pubkey);
-
-  const authorEl = document.createElement('span');
-  authorEl.className = 'event-pubkey';
-  authorEl.textContent = displayName;
-  authorEl.title = event.pubkey;
-
-  const time = document.createElement('span');
-  time.className = 'event-time';
-  time.textContent = formatTime(event.created_at);
-
-  const metaLeft = document.createElement('div');
-  metaLeft.className = 'event-meta-left';
-  metaLeft.append(avatar, authorEl, time);
-  if (store.nip05.has(event.pubkey)) metaLeft.appendChild(createNip05Badge(store.nip05.get(event.pubkey)));
-  if (store.attestations.has(event.id)) metaLeft.appendChild(createOtsBadge());
-  meta.appendChild(metaLeft);
-
-  const isOwnPost = store.keys?.pubkeyHex === event.pubkey;
-  if (!isOwnPost) {
-    const alreadyFollowing = store.followedPubkeys.has(event.pubkey);
-    const followEventBtn = document.createElement('button');
-    followEventBtn.className = 'btn-follow-feed';
-    followEventBtn.textContent = alreadyFollowing ? 'Following' : 'Follow';
-    followEventBtn.disabled = alreadyFollowing;
-
-    followEventBtn.addEventListener('click', async () => {
-      store.addFollow({ pubkey: event.pubkey, relay: '', petname: '' });
-      rerenderFeed();
-      try {
-        await publishFollowList();
-      } catch { /* ignore relay error */ }
-    });
-
-    meta.appendChild(followEventBtn);
-  }
-
-  // Reply indicator — shown when this event references another event via e or a tag
-  const eTags = event.tags.filter(t => t[0] === 'e');
-  const aTags = event.tags.filter(t => t[0] === 'a');
-  let refLabel = null;
-
-  if (eTags.length > 0) {
-    const refId = eTags[eTags.length - 1][1];
-    const refEvent = store.events.find(e => e.id === refId);
-    const refProfile = refEvent ? store.profiles.get(refEvent.pubkey) : null;
-    refLabel = refProfile?.name || refProfile?.display_name
-      || (refEvent ? refEvent.pubkey.slice(0, 12) + '…' : refId.slice(0, 12) + '…');
-  } else if (aTags.length > 0) {
-    // a tag format: "<kind>:<pubkey>:<d-tag>"
-    const parts = (aTags[aTags.length - 1][1] || '').split(':');
-    const refPubkey = parts[1] || '';
-    const refProfile = refPubkey ? store.profiles.get(refPubkey) : null;
-    refLabel = refProfile?.name || refProfile?.display_name
-      || (refPubkey ? refPubkey.slice(0, 12) + '…' : aTags[aTags.length - 1][1].slice(0, 16) + '…');
-  }
-
-  if (refLabel !== null) {
-    const replyIndicator = document.createElement('div');
-    replyIndicator.className = 'reply-indicator';
-    replyIndicator.textContent = `↩ ${refLabel}`;
-    card.append(meta, replyIndicator);
-  } else {
-    card.appendChild(meta);
-  }
-
-  const content = document.createElement('div');
-  content.className = 'event-content';
-  content.textContent = event.content; // safe — never innerHTML
-
-  const actions = document.createElement('div');
-  actions.className = 'event-actions';
-
-  const replyBtn = document.createElement('button');
-  replyBtn.className = 'btn-reply';
-  replyBtn.textContent = 'Reply';
-
-  const showRepliesBtn = document.createElement('button');
-  showRepliesBtn.className = 'btn-reply';
-  showRepliesBtn.textContent = 'Show replies';
-
-  actions.append(replyBtn, showRepliesBtn);
-  card.append(content, actions);
-
-  const replyForm = createReplyForm(event);
-  card.appendChild(replyForm);
-
-  const repliesContainer = document.createElement('div');
-  repliesContainer.className = 'replies-container';
-  repliesContainer.hidden = true;
-  card.appendChild(repliesContainer);
-
-  replyBtn.addEventListener('click', () => {
-    replyForm.hidden = !replyForm.hidden;
-    if (!replyForm.hidden) replyForm.querySelector('textarea').focus();
-  });
-
-  showRepliesBtn.addEventListener('click', () => {
-    const existing = replySubscriptions.get(event.id);
-    if (existing) {
-      repliesContainer.hidden = !repliesContainer.hidden;
-      showRepliesBtn.textContent = repliesContainer.hidden ? 'Show replies' : 'Hide replies';
-    } else {
-      if (!isAnyConnected()) return;
-      repliesContainer.hidden = false;
-      showRepliesBtn.textContent = 'Hide replies';
-      const loadingEl = document.createElement('div');
-      loadingEl.className = 'replies-loading';
-      loadingEl.textContent = 'Loading replies…';
-      repliesContainer.appendChild(loadingEl);
-      const subId = crypto.randomUUID();
-      replySubscriptions.set(event.id, { subId, container: repliesContainer });
-      replySubIdToContainer.set(subId, repliesContainer);
-      replyEventIds.set(subId, new Set());
-      subscribeAll(subId, [{ kinds: [1], '#e': [event.id], limit: 20 }]);
-    }
-  });
-
-  return card;
+function makeStoreSlice() {
+  return {
+    signer: store.signer,
+    profiles: store.profiles,
+    nip05: store.nip05,
+    attestations: store.attestations,
+    followedPubkeys: store.followedPubkeys,
+    events: store.events,
+  };
 }
 
-function createReplyForm(parentEvent) {
-  const form = document.createElement('div');
-  form.className = 'reply-form';
-  form.hidden = true;
-
-  const profile = store.profiles.get(parentEvent.pubkey);
-  const name = getDisplayName(profile, parentEvent.pubkey.slice(0, 12) + '…');
-
-  const label = document.createElement('div');
-  label.className = 'reply-form-label';
-  label.textContent = `Replying to ${name}`;
-
-  const textarea = document.createElement('textarea');
-  textarea.rows = 3;
-  textarea.placeholder = 'Write your reply…';
-
-  const formActions = document.createElement('div');
-  formActions.className = 'reply-form-actions';
-
-  const submitBtn = document.createElement('button');
-  submitBtn.className = 'primary';
-  submitBtn.textContent = 'Reply';
-
-  const cancelBtn = document.createElement('button');
-  cancelBtn.textContent = 'Cancel';
-
-  const resultMsg = document.createElement('span');
-  resultMsg.className = 'result-msg';
-
-  formActions.append(submitBtn, cancelBtn, resultMsg);
-  form.append(label, textarea, formActions);
-
-  cancelBtn.addEventListener('click', () => {
-    form.hidden = true;
-    textarea.value = '';
-    resultMsg.textContent = '';
-  });
-
-  submitBtn.addEventListener('click', async () => {
-    if (!requireKeysAndRelay((msg) => {
-      resultMsg.textContent = msg;
-      resultMsg.className = 'result-msg err';
-    })) return;
-    const content = textarea.value.trim();
-    if (!content) return;
-
-    submitBtn.disabled = true;
-    resultMsg.textContent = 'Posting…';
-    resultMsg.className = 'result-msg';
-
-    try {
-      const event = await createOwnEvent({ kind: 1, tags: [['e', parentEvent.id], ['p', parentEvent.pubkey]], content });
+function makeRenderCallbacks() {
+  return {
+    onFollow: async (pubkey) => {
+      store.addFollow({ pubkey, relay: '', petname: '' });
+      rerenderFeed();
+      try { await publishFollowList(); } catch { /* ignore relay error */ }
+    },
+    onReply: async (parentEvent, content) => {
+      const event = await createOwnEvent({
+        kind: 1,
+        tags: [['e', parentEvent.id], ['p', parentEvent.pubkey]],
+        content,
+      });
       await publishToAll(event);
       store.addEvent(event);
-      textarea.value = '';
-      form.hidden = true;
-    } catch (err) {
-      resultMsg.textContent = err.message;
-      resultMsg.className = 'result-msg err';
-    } finally {
-      submitBtn.disabled = false;
-    }
-  });
-
-  return form;
-}
-
-function renderReply(event) {
-  const card = document.createElement('div');
-  card.className = 'reply-card';
-
-  const meta = document.createElement('div');
-  meta.className = 'event-meta';
-
-  const profile = store.profiles.get(event.pubkey);
-  const displayName = getDisplayName(profile, event.pubkey.slice(0, 12) + '…');
-
-  const avatar = createAvatar(profile, displayName, event.pubkey);
-
-  const authorEl = document.createElement('span');
-  authorEl.className = 'event-pubkey';
-  authorEl.textContent = displayName;
-  authorEl.title = event.pubkey;
-
-  const time = document.createElement('span');
-  time.className = 'event-time';
-  time.textContent = formatTime(event.created_at);
-
-  meta.append(avatar, authorEl, time);
-  if (store.nip05.has(event.pubkey)) meta.appendChild(createNip05Badge(store.nip05.get(event.pubkey)));
-
-  const content = document.createElement('div');
-  content.className = 'event-content';
-  content.textContent = event.content;
-
-  card.append(meta, content);
-  return card;
-}
-
-function formatTime(unixSec) {
-  const diff = Math.floor(Date.now() / 1000) - unixSec;
-  if (diff < 60) return `${diff}s ago`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return new Date(unixSec * 1000).toLocaleDateString();
+    },
+    onShowReplies: (event, repliesContainer, showRepliesBtn) => {
+      const existing = replySubscriptions.get(event.id);
+      if (existing) {
+        repliesContainer.hidden = !repliesContainer.hidden;
+        showRepliesBtn.textContent = repliesContainer.hidden ? 'Show replies' : 'Hide replies';
+      } else {
+        if (!isAnyConnected()) return;
+        repliesContainer.hidden = false;
+        showRepliesBtn.textContent = 'Hide replies';
+        const loadingEl = document.createElement('div');
+        loadingEl.className = 'replies-loading';
+        loadingEl.textContent = 'Loading replies…';
+        repliesContainer.appendChild(loadingEl);
+        const subId = crypto.randomUUID();
+        replySubscriptions.set(event.id, { subId, container: repliesContainer });
+        replySubIdToContainer.set(subId, repliesContainer);
+        replyEventIds.set(subId, new Set());
+        subIdHandlers.set(subId, (replyEvent) => {
+          const seen = replyEventIds.get(subId);
+          if (seen && !seen.has(replyEvent.id)) {
+            seen.add(replyEvent.id);
+            repliesContainer.querySelector('.replies-loading')?.remove();
+            repliesContainer.querySelector('.replies-empty')?.remove();
+            repliesContainer.appendChild(
+              renderReply(replyEvent, { profiles: store.profiles, nip05: store.nip05 })
+            );
+          }
+        });
+        subscribeAll(subId, [{ kinds: [1], '#e': [event.id], limit: 20 }]);
+      }
+    },
+    requireKeysAndRelay,
+  };
 }
 
 async function copyToClipboard(text, btn) {

@@ -156,7 +156,7 @@ export function renderEvent(event, slice, callbacks) {
   actions.append(replyBtn, showRepliesBtn);
   card.append(content, actions);
 
-  const replyForm = createReplyForm(event, { requireKeysAndRelay, onReply });
+  const replyForm = createReplyForm(event, displayName, { requireKeysAndRelay, onReply });
   card.appendChild(replyForm);
 
   const repliesContainer = document.createElement('div');
@@ -176,13 +176,12 @@ export function renderEvent(event, slice, callbacks) {
   return card;
 }
 
-function createReplyForm(parentEvent, { requireKeysAndRelay, onReply }) {
+function createReplyForm(parentEvent, displayName, { requireKeysAndRelay, onReply }) {
   const form = document.createElement('div');
   form.className = 'reply-form';
   form.hidden = true;
 
-  const profile = null; // profile is not available here — resolved by caller context
-  const name = parentEvent.pubkey.slice(0, 12) + '…';
+  const name = displayName;
 
   const label = document.createElement('div');
   label.className = 'reply-form-label';
