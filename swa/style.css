@@ -134,7 +134,7 @@ header .subtitle {
   margin-bottom: 1.25rem;
 }
 
-.modal-nips-label {
+.modal-specs-label {
   font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
@@ -143,7 +143,7 @@ header .subtitle {
   margin-bottom: 0.6rem;
 }
 
-.nips-list {
+.specs-list {
   display: flex;
   flex-direction: row;
   gap: 0.5rem;
@@ -151,7 +151,7 @@ header .subtitle {
   padding-bottom: 0.25rem;
 }
 
-.nip-badge {
+.spec-badge {
   flex-shrink: 0;
   background: var(--surface2);
   border: 1px solid var(--border);
@@ -715,7 +715,7 @@ details[open] > summary::before {
   font-size: 0.65rem;
 }
 
-.nip05-badge {
+.verified-badge {
   font-size: 0.68rem;
   padding: 0.1rem 0.35rem;
   border-radius: 4px;
@@ -844,9 +844,9 @@ details[open] > summary::before {
   background: rgba(239, 68, 68, 0.1);
 }
 
-/* ── NIP-07 ── */
+/* ── Extension ── */
 
-.nip07-badge {
+.extension-badge {
   font-size: 0.78rem;
   color: var(--accent);
   padding: 0.2rem 0;

@@ -45,11 +45,11 @@ export function getReplyLabel(event, { events, profiles }) {
   return null;
 }
 
-export function createNip05Badge(identifier) {
+export function createVerifiedBadge(identifier) {
   const badge = document.createElement('span');
-  badge.className = 'nip05-badge';
+  badge.className = 'verified-badge';
   badge.textContent = '✓ ' + identifier;
-  badge.title = `NIP-05 verified: ${identifier}`;
+  badge.title = `Verified identity: ${identifier}`;
   return badge;
 }
 
@@ -83,11 +83,11 @@ export function createAvatar(profile, displayName, pubkey) {
 /**
  * Renders a feed event card.
  * @param {object} event - The Nostr event.
- * @param {object} slice - { signer, profiles, nip05, attestations, followedPubkeys, events }
+ * @param {object} slice - { signer, profiles, verifiedIdentities, attestations, followedPubkeys, events }
  * @param {object} callbacks - { onFollow, onReply, onShowReplies, requireKeysAndRelay }
  */
 export function renderEvent(event, slice, callbacks) {
-  const { signer, profiles, nip05, attestations, followedPubkeys, events } = slice;
+  const { signer, profiles, verifiedIdentities, attestations, followedPubkeys, events } = slice;
   const { onFollow, onReply, onShowReplies, requireKeysAndRelay } = callbacks;
 
   const card = document.createElement('div');
@@ -114,7 +114,7 @@ export function renderEvent(event, slice, callbacks) {
   const metaLeft = document.createElement('div');
   metaLeft.className = 'event-meta-left';
   metaLeft.append(avatar, authorEl, time);
-  if (nip05.has(event.pubkey)) metaLeft.appendChild(createNip05Badge(nip05.get(event.pubkey)));
+  if (verifiedIdentities.has(event.pubkey)) metaLeft.appendChild(createVerifiedBadge(verifiedIdentities.get(event.pubkey)));
   if (attestations.has(event.id)) metaLeft.appendChild(createOtsBadge());
   meta.appendChild(metaLeft);
 
@@ -244,10 +244,10 @@ function createReplyForm(parentEvent, displayName, { requireKeysAndRelay, onRepl
 /**
  * Renders a reply card (compact, no actions).
  * @param {object} event - The Nostr event.
- * @param {object} slice - { profiles, nip05 }
+ * @param {object} slice - { profiles, verifiedIdentities }
  */
 export function renderReply(event, slice) {
-  const { profiles, nip05 } = slice;
+  const { profiles, verifiedIdentities } = slice;
   const card = document.createElement('div');
   card.className = 'reply-card';
 
@@ -269,7 +269,7 @@ export function renderReply(event, slice) {
   time.textContent = formatTime(event.created_at);
 
   meta.append(avatar, authorEl, time);
-  if (nip05.has(event.pubkey)) meta.appendChild(createNip05Badge(nip05.get(event.pubkey)));
+  if (verifiedIdentities.has(event.pubkey)) meta.appendChild(createVerifiedBadge(verifiedIdentities.get(event.pubkey)));
 
   const content = document.createElement('div');
   content.className = 'event-content';
@@ -282,11 +282,11 @@ export function renderReply(event, slice) {
 /**
  * Renders a follow list item.
  * @param {object} f - Follow entry { pubkey, relay, petname }
- * @param {object} slice - { profiles, nip05 }
+ * @param {object} slice - { profiles, verifiedIdentities }
  * @param {object} callbacks - { onUnfollow, onPetnameChange, onRelayChange, isValidRelayUrl, bindSaveOnBlurOrEnter }
  */
 export function renderFollowItem(f, slice, callbacks) {
-  const { profiles, nip05 } = slice;
+  const { profiles, verifiedIdentities } = slice;
   const { onUnfollow, onPetnameChange, onRelayChange, isValidRelayUrl, bindSaveOnBlurOrEnter } = callbacks;
 
   const item = document.createElement('div');
@@ -305,7 +305,7 @@ export function renderFollowItem(f, slice, callbacks) {
   nameEl.textContent = displayName;
   nameEl.title = f.pubkey;
   info.appendChild(nameEl);
-  if (nip05.has(f.pubkey)) info.appendChild(createNip05Badge(nip05.get(f.pubkey)));
+  if (verifiedIdentities.has(f.pubkey)) info.appendChild(createVerifiedBadge(verifiedIdentities.get(f.pubkey)));
 
   const petnameInput = document.createElement('input');
   petnameInput.type = 'text';

@@ -28,7 +28,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 });
 
-// ── NIP-07 request handler ────────────────────────────────────────────────────
+// ── Extension signing request handler ────────────────────────────────────────
 
 async function handleNostrRequest({ method, params = [] }, sender) {
   const origin = senderOrigin(sender);

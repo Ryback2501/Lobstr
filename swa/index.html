@@ -20,10 +20,10 @@
       <button id="modal-close-btn" class="modal-close" aria-label="Close">&times;</button>
       <h2 id="modal-title">Lobstr</h2>
       <p id="modal-version" class="modal-version"></p>
-      <p class="modal-description">A minimal Nostr client running entirely in the browser. No server, no tracking — just you and the relays.</p>
-      <div class="modal-nips">
-        <p class="modal-nips-label">Supported NIPs</p>
-        <div id="modal-nips-list" class="nips-list"></div>
+      <p class="modal-description">A minimal Nostr client running entirely in the browser. No server, no tracking — just you and the network.</p>
+      <div class="modal-specs">
+        <p class="modal-specs-label">Supported specs</p>
+        <div id="modal-specs-list" class="specs-list"></div>
       </div>
     </div>
   </div>
@@ -40,10 +40,10 @@
         </div>
       </div>
 
-      <div id="nip07-section" class="field-group" style="margin-top: 0.75rem;">
-        <button id="nip07-login-btn">Login with extension (NIP-07)</button>
-        <div id="nip07-error" class="error-msg" hidden></div>
-        <div id="nip07-badge" class="nip07-badge" hidden>Connected via browser extension</div>
+      <div id="extension-section" class="field-group" style="margin-top: 0.75rem;">
+        <button id="extension-login-btn">Login with extension</button>
+        <div id="extension-error" class="error-msg" hidden></div>
+        <div id="extension-badge" class="extension-badge" hidden>Connected via browser extension</div>
       </div>
 
       <details id="privkey-section">
@@ -66,7 +66,7 @@
       </details>
 
       <details id="mnemonic-section">
-        <summary>Mnemonic seed phrase (NIP-06)</summary>
+        <summary>Mnemonic seed phrase</summary>
         <div class="field-group" style="margin-top: 0.75rem;">
           <div id="mnemonic-display-wrapper" hidden>
             <div class="warning-label">Write down these 12 words and keep them safe. They cannot be recovered.</div>
@@ -112,8 +112,8 @@
         <input id="profile-picture" type="text" placeholder="https://..." autocomplete="off">
       </div>
       <div class="field-group">
-        <label for="profile-nip05">NIP-05 identifier</label>
-        <input id="profile-nip05" type="text" placeholder="you@example.com" autocomplete="off">
+        <label for="profile-identity">Identity handle</label>
+        <input id="profile-identity" type="text" placeholder="you@example.com" autocomplete="off">
       </div>
       <div class="btn-row">
         <button id="profile-save-btn" class="primary">Save profile</button>
@@ -207,7 +207,7 @@
           <button id="feed-id-search-btn">Find</button>
         </div>
       </div>
-      <div id="feed-status" class="feed-status">Connect to a relay to see events.</div>
+      <div id="feed-status" class="feed-status">Connect to a server to see events.</div>
       <div id="events-list"></div>
       <div id="mentions-status" class="feed-status" hidden>No mentions yet.</div>
       <div id="mentions-list" hidden></div>

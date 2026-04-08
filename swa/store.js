@@ -101,11 +101,11 @@ export const store = {
     emit('attestation', eventId);
   },
 
-  nip05: new Map(), // pubkey → verified NIP-05 identifier string
+  verifiedIdentities: new Map(), // pubkey → verified identity handle string
 
-  setNip05(pubkey, identifier) {
-    this.nip05.set(pubkey, identifier);
-    emit('nip05', pubkey);
+  setVerifiedIdentity(pubkey, identifier) {
+    this.verifiedIdentities.set(pubkey, identifier);
+    emit('verifiedIdentity', pubkey);
   },
 
   profiles: new Map(), // pubkey → { name, about, picture, _created_at }
