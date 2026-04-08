@@ -90,3 +90,11 @@ export function verifyEvent(event) {
     return false;
   }
 }
+
+export function classifyEvent(event) {
+  const k = event.kind;
+  if (k >= 20000 && k < 30000) return 'ephemeral';
+  if (k === 0 || k === 3 || (k >= 10000 && k < 20000)) return 'replaceable';
+  if (k >= 30000 && k < 40000) return 'addressable';
+  return 'regular';
+}
