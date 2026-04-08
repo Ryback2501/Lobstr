@@ -1,0 +1,26 @@
+name: Enforce branch workflow
+
+on:
+  pull_request:
+    types: [opened, reopened, edited, synchronize]
+
+jobs:
+  check-pr-target:
+    name: PR must target the correct branch
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate base branch
+        env:
+          BASE: ${{ github.base_ref }}
+          HEAD: ${{ github.head_ref }}
+        run: |
+          # Allowed promotion paths between long-lived branches
+          if [ "$HEAD" = "dev"  ] && [ "$BASE" = "test" ]; then exit 0; fi
+          if [ "$HEAD" = "test" ] && [ "$BASE" = "main" ]; then exit 0; fi
+
+          # All feature/fix/refactor branches must target dev
+          if [ "$BASE" != "dev" ]; then
+            echo "error: PRs from feature branches must target 'dev', not '$BASE'."
+            echo "       Allowed promotion paths: dev→test, test→main."
+            exit 1
+          fi
