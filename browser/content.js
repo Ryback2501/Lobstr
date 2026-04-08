@@ -7,12 +7,12 @@
 // ── Bridge: page → background ─────────────────────────────────────────────────
 
 window.addEventListener('message', ({ source, data }) => {
-  if (source !== window || data?.type !== 'LOBSTR_NIP07_REQUEST') return;
+  if (source !== window || data?.type !== 'LOBSTR_SIGNER_REQUEST') return;
 
   chrome.runtime.sendMessage(
     { type: 'NOSTR_REQUEST', id: data.id, method: data.method, params: data.params },
     (response) => {
-      const msg = { type: 'LOBSTR_NIP07_RESPONSE', id: data.id };
+      const msg = { type: 'LOBSTR_SIGNER_RESPONSE', id: data.id };
       if (chrome.runtime.lastError) {
         msg.error = chrome.runtime.lastError.message;
       } else {
@@ -40,10 +40,10 @@ const METHOD_LABELS = {
 
 function showPermissionModal({ requestId, origin, method, displayParams }) {
   // Remove any stale modal from a previous request
-  document.getElementById('lobstr-nip07-host')?.remove();
+  document.getElementById('lobstr-permission-host')?.remove();
 
   const host = document.createElement('div');
-  host.id = 'lobstr-nip07-host';
+  host.id = 'lobstr-permission-host';
   const shadow = host.attachShadow({ mode: 'closed' });
 
   shadow.innerHTML = `

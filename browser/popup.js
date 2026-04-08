@@ -1,5 +1,5 @@
 import { generateKeypair, importPrivkey } from './nostr.js';
-import { generateMnemonic, validateMnemonic, deriveNostrKeypair } from './nip06.js';
+import { generateMnemonic, validateMnemonic, deriveNostrKeypair } from './mnemonic.js';
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 

@@ -25,7 +25,7 @@ export class LocalSigner {
   }
 }
 
-export class Nip07Signer {
+export class ExtensionSigner {
   constructor(nostr) {
     this._nostr = nostr;
     this.pubkeyHex = null; // set after getPublicKey() resolves
@@ -46,12 +46,12 @@ export class Nip07Signer {
   }
 
   async encrypt(recipientPubkeyHex, plaintext) {
-    if (!this._nostr.nip04) throw new Error('NIP-04 is not supported by the connected extension.');
+    if (!this._nostr.nip04) throw new Error('Encrypted messaging is not supported by the connected extension.');
     return this._nostr.nip04.encrypt(recipientPubkeyHex, plaintext);
   }
 
   async decrypt(senderPubkeyHex, ciphertext) {
-    if (!this._nostr.nip04) throw new Error('NIP-04 is not supported by the connected extension.');
+    if (!this._nostr.nip04) throw new Error('Encrypted messaging is not supported by the connected extension.');
     return this._nostr.nip04.decrypt(senderPubkeyHex, ciphertext);
   }
 }

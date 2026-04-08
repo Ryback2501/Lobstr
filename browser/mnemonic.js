@@ -1,5 +1,5 @@
 /**
- * NIP-06: Basic key derivation from mnemonic seed phrase
+ * Mnemonic key derivation
  * BIP-39 mnemonic generation/validation + BIP-32 HD derivation
  * Derivation path: m/44'/1237'/0'/0/0  (Nostr coin type 1237)
  */
@@ -36,8 +36,7 @@ export function generateMnemonic(strength = 128) {
 }
 
 function entropyToMnemonic(entropy) {
-  // Append checksum bits (ENT/32) after entropy bits
-  const checksumBits = entropy.length / 4; // in bits
+  const checksumBits = entropy.length / 4;
   const hash = sha256(entropy);
   const checksumByte = hash[0] & (0xff << (8 - checksumBits));
 
@@ -58,14 +57,12 @@ export function validateMnemonic(mnemonic) {
   for (const w of words) {
     if (!wordMap.has(w)) return false;
   }
-  // Reconstruct and verify checksum
   let bits = words.map(w => wordMap.get(w).toString(2).padStart(11, '0')).join('');
   const totalBits = words.length * 11;
-  const checksumBits = totalBits % 32 || 32; // always ENT/32 = MS/3
+  const checksumBits = totalBits % 32 || 32;
   const entropyBits = bits.slice(0, totalBits - checksumBits);
   const givenChecksum = parseInt(bits.slice(totalBits - checksumBits), 2);
 
-  // Reconstruct entropy bytes
   const entropy = new Uint8Array(entropyBits.length / 8);
   for (let i = 0; i < entropy.length; i++) {
     entropy[i] = parseInt(entropyBits.slice(i * 8, i * 8 + 8), 2);
@@ -97,12 +94,10 @@ async function childKey({ priv, chain }, index) {
   const hardened = index >= 0x80000000;
   const data = new Uint8Array(37);
   if (hardened) {
-    // 0x00 || ser256(privKey) || ser32(index)
     data[0] = 0x00;
     data.set(priv, 1);
   } else {
-    // serP(pubKey) || ser32(index)  — need full 33-byte compressed pubkey
-    const pub = secp256k1.getPublicKey(priv, true); // 33-byte compressed
+    const pub = secp256k1.getPublicKey(priv, true);
     data.set(pub, 0);
   }
   data.set(ser32(index), 33);
@@ -120,7 +115,7 @@ async function childKey({ priv, chain }, index) {
   };
 }
 
-const H = 0x80000000; // hardened offset
+const H = 0x80000000;
 
 // m/44'/1237'/0'/0/0
 export async function deriveNostrKeypair(mnemonic, passphrase = '') {

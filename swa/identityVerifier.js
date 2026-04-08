@@ -1,5 +1,5 @@
-export async function verifyNip05(pubkey, identifier, store, fetcher = fetch) {
-  if (store.nip05.has(pubkey)) return;
+export async function verifyIdentity(pubkey, identifier, store, fetcher = fetch) {
+  if (store.verifiedIdentities.has(pubkey)) return;
   const at = identifier.indexOf('@');
   if (at < 1) return;
   const local = identifier.slice(0, at).toLowerCase();
@@ -12,7 +12,7 @@ export async function verifyNip05(pubkey, identifier, store, fetcher = fetch) {
     if (!res.ok) return;
     const data = await res.json();
     if (typeof data?.names?.[local] === 'string' && data.names[local].toLowerCase() === pubkey.toLowerCase()) {
-      store.setNip05(pubkey, identifier);
+      store.setVerifiedIdentity(pubkey, identifier);
     }
   } catch {
     // transient failure — caller may retry on next profile update

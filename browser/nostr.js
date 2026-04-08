@@ -70,7 +70,7 @@ export async function encryptDm(privkeyHex, recipientPubkeyHex, plaintext) {
 
 export async function decryptDm(privkeyHex, contactPubkeyHex, content) {
   const sep = content.indexOf('?iv=');
-  if (sep === -1) throw new Error('Invalid NIP-04 content format');
+  if (sep === -1) throw new Error('Invalid encrypted message format');
   const ciphertext = Uint8Array.from(atob(content.slice(0, sep)), c => c.charCodeAt(0));
   const iv = Uint8Array.from(atob(content.slice(sep + 4)), c => c.charCodeAt(0));
   const sharedPoint = secp256k1.getSharedSecret(hexToBytes(privkeyHex), '02' + contactPubkeyHex);

@@ -1,6 +1,6 @@
 /**
  * Runs in the page's MAIN world (declared in manifest content_scripts).
- * Provides window.nostr per NIP-07. Never has access to chrome.* APIs —
+ * Provides window.nostr for signing and key access. Never has access to chrome.* APIs —
  * all requests are bridged through content.js via postMessage.
  */
 (() => {
@@ -10,7 +10,7 @@
   const pending = new Map();
 
   window.addEventListener('message', ({ source, data }) => {
-    if (source !== window || data?.type !== 'LOBSTR_NIP07_RESPONSE') return;
+    if (source !== window || data?.type !== 'LOBSTR_SIGNER_RESPONSE') return;
     const p = pending.get(data.id);
     if (!p) return;
     pending.delete(data.id);
@@ -24,14 +24,14 @@
       const id = crypto.randomUUID();
       const timer = setTimeout(() => {
         if (pending.delete(id)) {
-          reject(new Error(`NIP-07 request timed out: ${method}`));
+          reject(new Error(`Signing request timed out: ${method}`));
         }
       }, TIMEOUT_MS);
       pending.set(id, {
         resolve: (v) => { clearTimeout(timer); resolve(v); },
         reject:  (e) => { clearTimeout(timer); reject(e); },
       });
-      window.postMessage({ type: 'LOBSTR_NIP07_REQUEST', id, method, params }, '*');
+      window.postMessage({ type: 'LOBSTR_SIGNER_REQUEST', id, method, params }, '*');
     });
   }
 

@@ -1,17 +1,17 @@
 import { generateKeypair, importPrivkey, verifyEvent } from './nostr.js';
-import { generateMnemonic, validateMnemonic, deriveNostrKeypair } from './nip06.js';
+import { generateMnemonic, validateMnemonic, deriveNostrKeypair } from './mnemonic.js';
 import { RelayConnection } from './relay.js';
 import { store } from './store.js';
-import { LocalSigner, Nip07Signer } from './signer.js';
-import { verifyNip05 } from './nip05.js';
+import { LocalSigner, ExtensionSigner } from './signer.js';
+import { verifyIdentity } from './identityVerifier.js';
 import {
   renderEvent, renderReply, renderFollowItem,
-  getDisplayName, formatTime, createNip05Badge, createOtsBadge,
+  getDisplayName, formatTime, createVerifiedBadge, createOtsBadge,
   isOwnEvent,
 } from './feedView.js';
 
 const VERSION = '0.0.2';
-const SUPPORTED_NIPS = ['01', '02', '03', '04', '05', '06', '07'];
+const SUPPORTED_SPECS = ['01', '02', '03', '04', '05', '06', '07'];
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 
@@ -38,7 +38,7 @@ const mnemonicError = document.getElementById('mnemonic-error');
 const profileNameInput = document.getElementById('profile-name');
 const profileAboutInput = document.getElementById('profile-about');
 const profilePictureInput = document.getElementById('profile-picture');
-const profileNip05Input = document.getElementById('profile-nip05');
+const profileIdentityInput = document.getElementById('profile-identity');
 const profileSaveBtn = document.getElementById('profile-save-btn');
 const profileResult = document.getElementById('profile-result');
 
@@ -83,16 +83,16 @@ const dmCompose = document.getElementById('dm-compose');
 const dmSendBtn = document.getElementById('dm-send-btn');
 const dmResult = document.getElementById('dm-result');
 
-const nip07LoginBtn = document.getElementById('nip07-login-btn');
-const nip07Error = document.getElementById('nip07-error');
-const nip07Badge = document.getElementById('nip07-badge');
+const extensionLoginBtn = document.getElementById('extension-login-btn');
+const extensionError = document.getElementById('extension-error');
+const extensionBadge = document.getElementById('extension-badge');
 const logoutBtn = document.getElementById('logout-btn');
 
 const infoBtn = document.getElementById('info-btn');
 const infoModal = document.getElementById('info-modal');
 const modalCloseBtn = document.getElementById('modal-close-btn');
 const modalVersion = document.getElementById('modal-version');
-const modalNipsList = document.getElementById('modal-nips-list');
+const modalSpecsList = document.getElementById('modal-specs-list');
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
@@ -113,7 +113,7 @@ let mentionsSubId = null;
 let attestationSubId = null;
 let dmSubId = null;
 let currentDmContact = null; // pubkey of the open DM thread
-const nip05Checked = new Set(); // pubkeys already attempted (verified or failed)
+const identityVerifyAttempted = new Set(); // pubkeys already attempted (verified or failed)
 let feedRetryTimer = null;
 let sinceFilter = 0; // seconds offset from now; 0 = no filter
 let untilFilter = 0; // seconds offset from now; 0 = no filter
@@ -136,11 +136,11 @@ kindHandlers.set(4, (event) => handleDmEvent(event));
 // ── Info modal ────────────────────────────────────────────────────────────────
 
 modalVersion.textContent = `v${VERSION}`;
-for (const nip of SUPPORTED_NIPS) {
+for (const spec of SUPPORTED_SPECS) {
   const badge = document.createElement('span');
-  badge.className = 'nip-badge';
-  badge.textContent = `NIP-${nip}`;
-  modalNipsList.appendChild(badge);
+  badge.className = 'spec-badge';
+  badge.textContent = spec;
+  modalSpecsList.appendChild(badge);
 }
 
 infoBtn.addEventListener('click', () => { infoModal.hidden = false; });
@@ -220,7 +220,7 @@ store.on('profiles', (pubkey) => {
   rerenderDmConvList();
 });
 
-store.on('nip05', (pubkey) => {
+store.on('verifiedIdentity', (pubkey) => {
   if (store.events.some(e => e.pubkey === pubkey) || store.mentions.some(e => e.pubkey === pubkey)) rerenderFeed();
   renderFollows(store.follows);
   rerenderDmConvList();
@@ -293,7 +293,7 @@ importBtn.addEventListener('click', () => {
 copyPubkeyBtn.addEventListener('click', () => copyToClipboard(pubkeyDisplay.value, copyPubkeyBtn));
 copyPrivkeyBtn.addEventListener('click', () => copyToClipboard(privkeyDisplay.value, copyPrivkeyBtn));
 
-// ── NIP-06 mnemonic ───────────────────────────────────────────────────────────
+// ── Mnemonic seed phrase ──────────────────────────────────────────────────────
 
 generateMnemonicBtn.addEventListener('click', async () => {
   generateMnemonicBtn.disabled = true;
@@ -368,24 +368,24 @@ function showMnemonic(mnemonic) {
   mnemonicDisplayWrapper.hidden = false;
 }
 
-// ── NIP-07 extension login ────────────────────────────────────────────────────
+// ── Extension login ───────────────────────────────────────────────────────────
 
-nip07LoginBtn.addEventListener('click', async () => {
-  nip07Error.hidden = true;
+extensionLoginBtn.addEventListener('click', async () => {
+  extensionError.hidden = true;
   if (!window.nostr) {
-    nip07Error.textContent = 'No Nostr extension detected. Install one (e.g. Alby, nos2x) and reload.';
-    nip07Error.hidden = false;
+    extensionError.textContent = 'No signing extension detected. Install one (e.g. Alby, nos2x) and reload.';
+    extensionError.hidden = false;
     return;
   }
-  nip07LoginBtn.disabled = true;
+  extensionLoginBtn.disabled = true;
   try {
-    const signer = await new Nip07Signer(window.nostr).init();
+    const signer = await new ExtensionSigner(window.nostr).init();
     store.setSigner(signer);
   } catch (err) {
-    nip07Error.textContent = err.message;
-    nip07Error.hidden = false;
+    extensionError.textContent = err.message;
+    extensionError.hidden = false;
   } finally {
-    nip07LoginBtn.disabled = false;
+    extensionLoginBtn.disabled = false;
   }
 });
 
@@ -402,7 +402,7 @@ profileSaveBtn.addEventListener('click', async () => {
     name: profileNameInput.value.trim(),
     about: profileAboutInput.value.trim(),
     picture: profilePictureInput.value.trim(),
-    nip05: profileNip05Input.value.trim() || undefined,
+    nip05: profileIdentityInput.value.trim() || undefined,
   };
 
   profileSaveBtn.disabled = true;
@@ -583,7 +583,7 @@ function renderFollows(follows) {
   followsList.innerHTML = '';
   for (const f of follows) {
     followsList.appendChild(renderFollowItem(f,
-      { profiles: store.profiles, nip05: store.nip05 },
+      { profiles: store.profiles, verifiedIdentities: store.verifiedIdentities },
       {
         onUnfollow: handleUnfollow,
         onPetnameChange: async (entry, newPetname) => {
@@ -876,20 +876,20 @@ function handleMetadataEvent(event) {
     const existing = store.profiles.get(event.pubkey);
     if (!existing || event.created_at > existing._created_at) {
       store.setProfile(event.pubkey, { ...metadata, _created_at: event.created_at });
-      if (metadata.nip05) handleVerifyNip05(event.pubkey, metadata.nip05);
+      if (metadata.nip05) handleVerifyIdentity(event.pubkey, metadata.nip05);
     }
   } catch {
     // Ignore invalid JSON in kind-0 content
   }
 }
 
-async function handleVerifyNip05(pubkey, identifier) {
-  if (nip05Checked.has(pubkey)) return;
-  nip05Checked.add(pubkey);
+async function handleVerifyIdentity(pubkey, identifier) {
+  if (identityVerifyAttempted.has(pubkey)) return;
+  identityVerifyAttempted.add(pubkey);
   try {
-    await verifyNip05(pubkey, identifier, store);
+    await verifyIdentity(pubkey, identifier, store);
   } catch {
-    nip05Checked.delete(pubkey); // allow retry on transient failure
+    identityVerifyAttempted.delete(pubkey); // allow retry on transient failure
   }
 }
 
@@ -899,7 +899,7 @@ function populateProfileForm(pubkey) {
   profileNameInput.value = profile.name || profile.display_name || '';
   profileAboutInput.value = profile.about || '';
   profilePictureInput.value = profile.picture || '';
-  profileNip05Input.value = profile.nip05 || '';
+  profileIdentityInput.value = profile.nip05 || '';
 }
 
 function handleAttestationEvent(event) {
@@ -1158,14 +1158,14 @@ function requireKeysAndRelay(errorFn) {
 
 function updateIdentityUI() {
   const hasKeys = !!store.signer;
-  const isNip07 = store.signer instanceof Nip07Signer;
+  const isExtension = store.signer instanceof ExtensionSigner;
   logoutBtn.hidden = !hasKeys;
-  nip07Badge.hidden = !isNip07;
-  nip07LoginBtn.hidden = isNip07;
-  nip07Error.hidden = true;
-  document.getElementById('privkey-section').hidden = isNip07;
-  document.getElementById('mnemonic-section').hidden = isNip07;
-  document.getElementById('local-key-btn-row').hidden = isNip07;
+  extensionBadge.hidden = !isExtension;
+  extensionLoginBtn.hidden = isExtension;
+  extensionError.hidden = true;
+  document.getElementById('privkey-section').hidden = isExtension;
+  document.getElementById('mnemonic-section').hidden = isExtension;
+  document.getElementById('local-key-btn-row').hidden = isExtension;
 }
 
 async function createOwnEvent({ kind, tags, content }) {
@@ -1196,7 +1196,7 @@ function makeStoreSlice() {
   return {
     signer: store.signer,
     profiles: store.profiles,
-    nip05: store.nip05,
+    verifiedIdentities: store.verifiedIdentities,
     attestations: store.attestations,
     followedPubkeys: store.followedPubkeys,
     events: store.events,
@@ -1243,7 +1243,7 @@ function makeRenderCallbacks() {
             repliesContainer.querySelector('.replies-loading')?.remove();
             repliesContainer.querySelector('.replies-empty')?.remove();
             repliesContainer.appendChild(
-              renderReply(replyEvent, { profiles: store.profiles, nip05: store.nip05 })
+              renderReply(replyEvent, { profiles: store.profiles, verifiedIdentities: store.verifiedIdentities })
             );
           }
         });
