@@ -6,8 +6,7 @@ import { LocalSigner, ExtensionSigner } from './signer.js';
 import { verifyIdentity } from './identityVerifier.js';
 import {
   renderEvent, renderReply, renderFollowItem,
-  getDisplayName, formatTime, createVerifiedBadge, createOtsBadge,
-  isOwnEvent,
+  getDisplayName, formatTime, createOtsBadge,
 } from './feedView.js';
 
 const VERSION = '0.0.2';
