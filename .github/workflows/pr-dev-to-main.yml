@@ -90,14 +90,14 @@ jobs:
     uses: ./.github/workflows/ci-jobs.yml
 
   auto-merge:
-    name: Fast-forward main to dev
+    name: Fast-forward dev to main
     needs: [ci]
     runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
     steps:
-      - name: Advance main to dev HEAD (fast-forward, no merge commit)
+      - name: Advance main to dev HEAD
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -105,4 +105,4 @@ jobs:
           gh api repos/${{ github.repository }}/git/refs/heads/main \
             --method PATCH \
             -f sha="$DEV_SHA" \
-            -f force=false
+            -F force=false
