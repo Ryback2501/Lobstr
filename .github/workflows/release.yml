@@ -1,0 +1,114 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  packages: write
+  pages: write
+  id-token: write
+
+jobs:
+  read-version:
+    name: Read version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.VERSION }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read VERSION file
+        id: version
+        run: |
+          VERSION=$(cat VERSION | tr -d '[:space:]')
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Releasing version: $VERSION"
+
+  create-tag:
+    name: Create version tag
+    needs: [read-version]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create and push tag
+        run: |
+          VERSION="${{ needs.read-version.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "v${VERSION}"
+          git push origin "v${VERSION}"
+
+  create-artifacts:
+    name: Create zip artifacts
+    needs: [read-version]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Zip SWA and browser extension
+        run: |
+          VERSION="${{ needs.read-version.outputs.version }}"
+          cd swa && zip -r "../swa-${VERSION}.zip" . && cd ..
+          cd browser && zip -r "../browser-${VERSION}.zip" . && cd ..
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts
+          path: |
+            swa-*.zip
+            browser-*.zip
+          retention-days: 1
+
+  docker-publish:
+    name: Publish Docker image
+    needs: [read-version, create-tag]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Build and push image
+        run: |
+          VERSION="${{ needs.read-version.outputs.version }}"
+          IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/lobstr"
+          docker build -t "${IMAGE}:${VERSION}" -t "${IMAGE}:latest" .
+          docker push "${IMAGE}:${VERSION}"
+          docker push "${IMAGE}:latest"
+
+  github-release:
+    name: Create GitHub release
+    needs: [read-version, create-tag, create-artifacts]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-artifacts
+      - name: Create release with artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ needs.read-version.outputs.version }}"
+          gh release create "v${VERSION}" \
+            --generate-notes \
+            --title "v${VERSION}" \
+            "swa-${VERSION}.zip" \
+            "browser-${VERSION}.zip"
+
+  deploy-pages:
+    name: Deploy to GitHub Pages
+    needs: [github-release]
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./swa
+      - uses: actions/deploy-pages@v4
+        id: deployment

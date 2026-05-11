@@ -1,0 +1,108 @@
+name: PR dev to main
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+jobs:
+  check-source:
+    name: Source must be dev
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate source branch
+        env:
+          HEAD: ${{ github.head_ref }}
+        run: |
+          if [ "$HEAD" != "dev" ]; then
+            echo "error: only 'dev' can target main, got '$HEAD'"
+            exit 1
+          fi
+
+  check-divergence:
+    name: dev contains all of main
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify dev is not missing commits from main
+        run: |
+          git fetch origin dev main
+          BEHIND=$(git rev-list --count origin/dev..origin/main)
+          if [ "$BEHIND" -ne 0 ]; then
+            echo "error: dev is missing $BEHIND commit(s) from main."
+            echo "Merge main into dev before opening this PR."
+            exit 1
+          fi
+          echo "dev contains all commits from main."
+
+  version-gate:
+    name: Version check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Read VERSION file
+        id: version
+        run: |
+          VERSION=$(cat VERSION | tr -d '[:space:]')
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Version: $VERSION"
+      - name: Get latest release tag
+        id: latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          LATEST=$(gh release list --limit 1 --json tagName --jq '.[0].tagName // ""')
+          LATEST="${LATEST#v}"
+          echo "LATEST=$LATEST" >> "$GITHUB_OUTPUT"
+          echo "Latest release: ${LATEST:-none}"
+      - name: Tag must not already exist
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          git fetch --tags
+          if git tag --list "v${VERSION}" | grep -q .; then
+            echo "error: tag v${VERSION} already exists — bump VERSION before merging."
+            exit 1
+          fi
+      - name: New version must be strictly greater than latest release
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          LATEST="${{ steps.latest.outputs.LATEST }}"
+          if [ -z "$LATEST" ]; then
+            echo "No previous release — accepting $VERSION as first release."
+            exit 0
+          fi
+          HIGHER=$(printf '%s\n%s\n' "$LATEST" "$VERSION" | sort -V | tail -1)
+          if [ "$HIGHER" = "$LATEST" ] || [ "$VERSION" = "$LATEST" ]; then
+            echo "error: VERSION ($VERSION) must be strictly greater than latest release ($LATEST)"
+            exit 1
+          fi
+          echo "Version check passed: $VERSION > $LATEST"
+
+  ci:
+    name: CI
+    needs: [check-source, check-divergence, version-gate]
+    uses: ./.github/workflows/ci-jobs.yml
+
+  auto-merge:
+    name: Fast-forward main to dev
+    needs: [ci]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Advance main to dev HEAD (fast-forward, no merge commit)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          DEV_SHA=$(gh api repos/${{ github.repository }}/git/ref/heads/dev --jq '.object.sha')
+          gh api repos/${{ github.repository }}/git/refs/heads/main \
+            --method PATCH \
+            -f sha="$DEV_SHA" \
+            -f force=false

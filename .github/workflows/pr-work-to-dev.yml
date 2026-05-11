@@ -1,0 +1,65 @@
+name: PR work branch to dev
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [dev]
+
+jobs:
+  check-branch:
+    name: Validate branch name
+    runs-on: ubuntu-latest
+    steps:
+      - name: Branch must match feature/*, fix/*, or chore/*
+        env:
+          HEAD: ${{ github.head_ref }}
+        run: |
+          if echo "$HEAD" | grep -qE '^(feature|fix|chore)/.+'; then
+            echo "Branch '$HEAD' is valid."
+            exit 0
+          fi
+          echo "error: branch '$HEAD' must match feature/*, fix/*, or chore/*"
+          exit 1
+
+  check-sync:
+    name: Branch is in sync with dev
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify branch is based on latest dev
+        run: |
+          git fetch origin dev
+          MERGE_BASE=$(git merge-base HEAD origin/dev)
+          DEV_TIP=$(git rev-parse origin/dev)
+          if [ "$MERGE_BASE" != "$DEV_TIP" ]; then
+            echo "error: branch is not based on latest dev."
+            echo "  dev tip:    $DEV_TIP"
+            echo "  merge base: $MERGE_BASE"
+            echo "Rebase onto dev before merging."
+            exit 1
+          fi
+          echo "Branch is in sync with dev."
+
+  ci:
+    name: CI
+    needs: [check-branch, check-sync]
+    uses: ./.github/workflows/ci-jobs.yml
+
+  auto-merge:
+    name: Squash merge
+    needs: [ci]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Squash merge and delete branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr merge ${{ github.event.pull_request.number }} \
+            --squash \
+            --delete-branch \
+            --repo ${{ github.repository }}
