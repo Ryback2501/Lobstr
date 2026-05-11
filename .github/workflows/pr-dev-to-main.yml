@@ -99,7 +99,7 @@ jobs:
     steps:
       - name: Advance main to dev HEAD
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           DEV_SHA=$(gh api repos/${{ github.repository }}/git/ref/heads/dev --jq '.object.sha')
           gh api repos/${{ github.repository }}/git/refs/heads/main \
