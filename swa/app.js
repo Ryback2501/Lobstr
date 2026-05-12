@@ -9,7 +9,7 @@ import {
   renderEvent, renderReply, renderFollowItem,
   getDisplayName, formatTime, createOtsBadge,
 } from './feedView.js';
-const SUPPORTED_SPECS = ['01', '02', '03', '04', '05', '06', '07', '08'];
+const SUPPORTED_SPECS = ['01', '02', '03', '04', '05', '06', '07', '08', '09'];
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 
@@ -251,6 +251,11 @@ store.on('dmDecrypted', (eventId) => {
     wrapper.classList.remove('dm-pending');
   }
   rerenderDmConvList();
+});
+
+store.on('eventRemoved', (eventId) => {
+  eventsList.querySelector(`[data-event-id="${eventId}"]`)?.remove();
+  mentionsList.querySelector(`[data-event-id="${eventId}"]`)?.remove();
 });
 
 store.on('mentions', (events) => {
@@ -1181,6 +1186,17 @@ function buildMentionEvent(content, tagOffset = 0) {
   return { content: transformed, tags: pTags };
 }
 
+async function handleDeleteEvent(event) {
+  const deletionEvent = await createOwnEvent({
+    kind: 5,
+    tags: [['e', event.id], ['k', String(event.kind)]],
+    content: '',
+  });
+  await publishToAll(deletionEvent);
+  store.removeEvent(event.id);
+  store.removeMention(event.id);
+}
+
 async function createOwnEvent({ kind, tags, content }) {
   if (!store.signer) throw new Error('No identity loaded.');
   return store.signer.signEvent({ created_at: Math.floor(Date.now() / 1000), kind, tags, content });
@@ -1265,6 +1281,7 @@ function makeRenderCallbacks() {
         subscribeAll(subId, [{ kinds: [1], '#e': [event.id], limit: 20 }]);
       }
     },
+    onDelete: handleDeleteEvent,
     requireKeysAndRelay,
   };
 }
