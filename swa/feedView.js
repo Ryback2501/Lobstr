@@ -27,7 +27,10 @@ export function getReplyLabel(event, { events, profiles }) {
   const aTags = event.tags.filter(t => t[0] === 'a');
 
   if (eTags.length > 0) {
-    const refId = eTags[eTags.length - 1][1];
+    const refTag = eTags.find(t => t[3] === 'reply')
+      || eTags.find(t => t[3] === 'root')
+      || eTags[eTags.length - 1];
+    const refId = refTag[1];
     const refEvent = events.find(e => e.id === refId);
     const refProfile = refEvent ? profiles.get(refEvent.pubkey) : null;
     return refProfile?.name || refProfile?.display_name
