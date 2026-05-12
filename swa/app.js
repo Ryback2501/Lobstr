@@ -4,12 +4,11 @@ import { RelayConnection } from './relay.js';
 import { store } from './store.js';
 import { LocalSigner, ExtensionSigner } from './signer.js';
 import { verifyIdentity } from './identityVerifier.js';
+import { VERSION } from './version.js';
 import {
   renderEvent, renderReply, renderFollowItem,
   getDisplayName, formatTime, createOtsBadge,
 } from './feedView.js';
-
-const VERSION = '0.0.2';
 const SUPPORTED_SPECS = ['01', '02', '03', '04', '05', '06', '07'];
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
