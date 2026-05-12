@@ -3,6 +3,11 @@
 
 import { resolveReplyTag } from './threading.js';
 
+function saveOnBlurOrEnter(input, fn) {
+  input.addEventListener('blur', fn);
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') input.blur(); });
+}
+
 export function formatTime(unixSec) {
   const diff = Math.floor(Date.now() / 1000) - unixSec;
   if (diff < 60) return `${diff}s ago`;
@@ -116,11 +121,11 @@ export function createAvatar(profile, displayName, pubkey) {
  * Renders a feed event card.
  * @param {object} event - The Nostr event.
  * @param {object} slice - { signer, profiles, verifiedIdentities, attestations, followedPubkeys, events }
- * @param {object} callbacks - { onFollow, onReply, onShowReplies, requireKeysAndRelay }
+ * @param {object} callbacks - { onFollow, onReply, onShowReplies, onDelete }
  */
 export function renderEvent(event, slice, callbacks) {
   const { signer, profiles, verifiedIdentities, attestations, followedPubkeys, events } = slice;
-  const { onFollow, onReply, onShowReplies, onDelete, requireKeysAndRelay } = callbacks;
+  const { onFollow, onReply, onShowReplies, onDelete } = callbacks;
 
   const card = document.createElement('div');
   card.className = 'event-card';
@@ -205,7 +210,7 @@ export function renderEvent(event, slice, callbacks) {
 
   card.append(content, actions);
 
-  const replyForm = createReplyForm(event, displayName, { requireKeysAndRelay, onReply });
+  const replyForm = createReplyForm(event, displayName, onReply);
   card.appendChild(replyForm);
 
   const repliesContainer = document.createElement('div');
@@ -225,16 +230,14 @@ export function renderEvent(event, slice, callbacks) {
   return card;
 }
 
-function createReplyForm(parentEvent, displayName, { requireKeysAndRelay, onReply }) {
+function createReplyForm(parentEvent, displayName, onReply) {
   const form = document.createElement('div');
   form.className = 'reply-form';
   form.hidden = true;
 
-  const name = displayName;
-
   const label = document.createElement('div');
   label.className = 'reply-form-label';
-  label.textContent = `Replying to ${name}`;
+  label.textContent = `Replying to ${displayName}`;
 
   const textarea = document.createElement('textarea');
   textarea.rows = 3;
@@ -263,10 +266,6 @@ function createReplyForm(parentEvent, displayName, { requireKeysAndRelay, onRepl
   });
 
   submitBtn.addEventListener('click', async () => {
-    if (!requireKeysAndRelay((msg) => {
-      resultMsg.textContent = msg;
-      resultMsg.className = 'result-msg err';
-    })) return;
     const content = textarea.value.trim();
     if (!content) return;
 
@@ -332,11 +331,13 @@ export function renderReply(event, slice) {
  * Renders a follow list item.
  * @param {object} f - Follow entry { pubkey, relay, petname }
  * @param {object} slice - { profiles, verifiedIdentities }
- * @param {object} callbacks - { onUnfollow, onPetnameChange, onRelayChange, isValidRelayUrl, bindSaveOnBlurOrEnter }
+ * @param {object} callbacks - { onUnfollow, onPetnameChange, onRelayChange }
+ *   onPetnameChange(f, newValue) — called only when value changed; app validates
+ *   onRelayChange(f, newValue)   — called only when value changed; returns false to revert input
  */
 export function renderFollowItem(f, slice, callbacks) {
   const { profiles, verifiedIdentities } = slice;
-  const { onUnfollow, onPetnameChange, onRelayChange, isValidRelayUrl, bindSaveOnBlurOrEnter } = callbacks;
+  const { onUnfollow, onPetnameChange, onRelayChange } = callbacks;
 
   const item = document.createElement('div');
   item.className = 'follow-item';
@@ -361,10 +362,9 @@ export function renderFollowItem(f, slice, callbacks) {
   petnameInput.className = 'petname-input';
   petnameInput.value = f.petname || '';
   petnameInput.placeholder = 'Add petname…';
-  bindSaveOnBlurOrEnter(petnameInput, async () => {
+  saveOnBlurOrEnter(petnameInput, async () => {
     const newPetname = petnameInput.value.trim();
-    if (newPetname === (f.petname || '')) return;
-    await onPetnameChange(f, newPetname);
+    if (newPetname !== (f.petname || '')) await onPetnameChange(f, newPetname);
   });
 
   const relayInput = document.createElement('input');
@@ -372,11 +372,11 @@ export function renderFollowItem(f, slice, callbacks) {
   relayInput.className = 'petname-input';
   relayInput.value = f.relay || '';
   relayInput.placeholder = 'Relay hint (wss://…)';
-  bindSaveOnBlurOrEnter(relayInput, async () => {
+  saveOnBlurOrEnter(relayInput, async () => {
     const newRelay = relayInput.value.trim();
     if (newRelay === (f.relay || '')) return;
-    if (newRelay && !isValidRelayUrl(newRelay)) { relayInput.value = f.relay || ''; return; }
-    await onRelayChange(f, newRelay);
+    const accepted = await onRelayChange(f, newRelay);
+    if (accepted === false) relayInput.value = f.relay || '';
   });
 
   const inputRow = document.createElement('div');

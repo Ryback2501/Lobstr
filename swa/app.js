@@ -592,11 +592,10 @@ function renderFollows(follows) {
           try { await publishFollowList(); } catch { /* ignore */ }
         },
         onRelayChange: async (entry, newRelay) => {
+          if (newRelay && !isValidRelayUrl(newRelay)) return false;
           entry.relay = newRelay;
           try { await publishFollowList(); } catch { /* ignore */ }
         },
-        isValidRelayUrl,
-        bindSaveOnBlurOrEnter,
       }
     ));
   }
@@ -1142,11 +1141,6 @@ function isValidRelayUrl(url) {
   return url.startsWith('wss://') || url.startsWith('ws://');
 }
 
-function bindSaveOnBlurOrEnter(input, fn) {
-  input.addEventListener('blur', fn);
-  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') input.blur(); });
-}
-
 function setResult(el, msg, cls) {
   el.textContent = msg;
   el.className = 'result-msg ' + cls;
@@ -1176,7 +1170,9 @@ function makeRenderCallbacks() {
       try { await publishFollowList(); } catch { /* ignore relay error */ }
     },
     onReply: async (parentEvent, content) => {
-      const replyTags = buildReplyTags(parentEvent, store.signer?.pubkeyHex);
+      if (!store.signer) throw new Error('Generate or import a keypair first.');
+      if (!isAnyConnected()) throw new Error('Connect to a relay first.');
+      const replyTags = buildReplyTags(parentEvent, store.signer.pubkeyHex);
       const { content: transformedContent, tags: mentionTags } = buildMentionEvent(content, replyTags.length);
       const event = await createOwnEvent({
         kind: 1,
@@ -1228,7 +1224,6 @@ function makeRenderCallbacks() {
       }
     },
     onDelete: handleDeleteEvent,
-    requireKeysAndRelay,
   };
 }
 
