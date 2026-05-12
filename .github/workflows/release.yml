@@ -18,10 +18,10 @@ jobs:
       version: ${{ steps.version.outputs.VERSION }}
     steps:
       - uses: actions/checkout@v4
-      - name: Read VERSION file
+      - name: Read version
         id: version
         run: |
-          VERSION=$(cat VERSION | tr -d '[:space:]')
+          VERSION=$(grep -oP "(?<=')[^']+" swa/version.js)
           echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Releasing version: $VERSION"
 
