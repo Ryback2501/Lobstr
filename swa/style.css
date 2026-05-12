@@ -583,6 +583,21 @@ details[open] > summary::before {
   border-color: var(--border);
 }
 
+.btn-delete {
+  font-size: 0.72rem;
+  padding: 0.2rem 0.55rem;
+  color: var(--muted);
+  background: transparent;
+  border-color: transparent;
+  margin-left: auto;
+}
+
+.btn-delete:hover {
+  color: var(--red);
+  background: var(--surface2);
+  border-color: var(--border);
+}
+
 .reply-form {
   margin-top: 0.75rem;
   padding-top: 0.75rem;

@@ -88,6 +88,13 @@ export const store = {
     emit('eventAdded', { event, insertIdx });
   },
 
+  removeEvent(eventId) {
+    const idx = this.events.findIndex(e => e.id === eventId);
+    if (idx === -1) return;
+    this.events.splice(idx, 1);
+    emit('eventRemoved', eventId);
+  },
+
   clearEvents() {
     this.events = [];
     emit('events', this.events);
@@ -120,6 +127,13 @@ export const store = {
   addMention(event) {
     if (this.mentions.find(e => e.id === event.id)) return;
     sortedInsert(this.mentions, event);
+    emit('mentions', this.mentions);
+  },
+
+  removeMention(eventId) {
+    const idx = this.mentions.findIndex(e => e.id === eventId);
+    if (idx === -1) return;
+    this.mentions.splice(idx, 1);
     emit('mentions', this.mentions);
   },
 

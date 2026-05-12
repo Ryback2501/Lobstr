@@ -117,7 +117,7 @@ export function createAvatar(profile, displayName, pubkey) {
  */
 export function renderEvent(event, slice, callbacks) {
   const { signer, profiles, verifiedIdentities, attestations, followedPubkeys, events } = slice;
-  const { onFollow, onReply, onShowReplies, requireKeysAndRelay } = callbacks;
+  const { onFollow, onReply, onShowReplies, onDelete, requireKeysAndRelay } = callbacks;
 
   const card = document.createElement('div');
   card.className = 'event-card';
@@ -183,6 +183,23 @@ export function renderEvent(event, slice, callbacks) {
   showRepliesBtn.textContent = 'Show replies';
 
   actions.append(replyBtn, showRepliesBtn);
+
+  if (isOwnEvent(event, signer?.pubkeyHex)) {
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'btn-delete';
+    deleteBtn.textContent = 'Delete';
+    deleteBtn.addEventListener('click', async () => {
+      if (!confirm('Request deletion of this event? Relays may not honor it.')) return;
+      deleteBtn.disabled = true;
+      try {
+        await onDelete(event);
+      } catch {
+        deleteBtn.disabled = false;
+      }
+    });
+    actions.appendChild(deleteBtn);
+  }
+
   card.append(content, actions);
 
   const replyForm = createReplyForm(event, displayName, { requireKeysAndRelay, onReply });
