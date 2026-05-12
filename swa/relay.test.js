@@ -123,7 +123,7 @@ test('_send: silently drops message when socket not open', async () => {
 
 test('_handleMessage: EVENT dispatches to onEvent', async () => {
   const received = [];
-  const { conn, ws, promise } = makeConn({ onEvent: (subId, e) => received.push({ subId, e }) });
+  const { ws, promise } = makeConn({ onEvent: (subId, e) => received.push({ subId, e }) });
   ws.fireOpen();
   await promise;
   ws.fireMessage(JSON.stringify(['EVENT', 'sub1', { id: 'abc', kind: 1 }]));
@@ -165,7 +165,7 @@ test('publish: rejects on connection close before OK', async () => {
 
 test('_handleMessage: EOSE dispatches to onEOSE', async () => {
   const eoses = [];
-  const { conn, ws, promise } = makeConn({ onEOSE: (subId) => eoses.push(subId) });
+  const { ws, promise } = makeConn({ onEOSE: (subId) => eoses.push(subId) });
   ws.fireOpen();
   await promise;
   ws.fireMessage(JSON.stringify(['EOSE', 'sub1']));
@@ -176,7 +176,7 @@ test('_handleMessage: EOSE dispatches to onEOSE', async () => {
 
 test('_handleMessage: CLOSED dispatches to onClosed', async () => {
   const closed = [];
-  const { conn, ws, promise } = makeConn({ onClosed: (subId, msg) => closed.push({ subId, msg }) });
+  const { ws, promise } = makeConn({ onClosed: (subId, msg) => closed.push({ subId, msg }) });
   ws.fireOpen();
   await promise;
   ws.fireMessage(JSON.stringify(['CLOSED', 'sub1', 'auth-required: please auth']));
@@ -188,7 +188,7 @@ test('_handleMessage: CLOSED dispatches to onClosed', async () => {
 
 test('_handleMessage: NOTICE dispatches to onNotice', async () => {
   const notices = [];
-  const { conn, ws, promise } = makeConn({ onNotice: (msg) => notices.push(msg) });
+  const { ws, promise } = makeConn({ onNotice: (msg) => notices.push(msg) });
   ws.fireOpen();
   await promise;
   ws.fireMessage(JSON.stringify(['NOTICE', 'hello from relay']));
@@ -198,28 +198,28 @@ test('_handleMessage: NOTICE dispatches to onNotice', async () => {
 // ── _handleMessage: malformed input ──────────────────────────────────────────
 
 test('_handleMessage: silently ignores invalid JSON', async () => {
-  const { conn, ws, promise } = makeConn();
+  const { ws, promise } = makeConn();
   ws.fireOpen();
   await promise;
   assert.doesNotThrow(() => ws.fireMessage('not json'));
 });
 
 test('_handleMessage: silently ignores non-array messages', async () => {
-  const { conn, ws, promise } = makeConn();
+  const { ws, promise } = makeConn();
   ws.fireOpen();
   await promise;
   assert.doesNotThrow(() => ws.fireMessage(JSON.stringify({ type: 'EVENT' })));
 });
 
 test('_handleMessage: silently ignores arrays shorter than 2', async () => {
-  const { conn, ws, promise } = makeConn();
+  const { ws, promise } = makeConn();
   ws.fireOpen();
   await promise;
   assert.doesNotThrow(() => ws.fireMessage(JSON.stringify(['ONLY_ONE'])));
 });
 
 test('_handleMessage: silently ignores unknown message types', async () => {
-  const { conn, ws, promise } = makeConn();
+  const { ws, promise } = makeConn();
   ws.fireOpen();
   await promise;
   assert.doesNotThrow(() => ws.fireMessage(JSON.stringify(['UNKNOWN', 'data'])));
