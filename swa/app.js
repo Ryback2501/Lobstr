@@ -103,8 +103,9 @@ const pool = new RelayPool({
   onStatus: handleRelayStatus,
 });
 
-// Handler registries — replaces the closed if/else dispatcher in handleEvent
-const kindHandlers = new Map(); // kind → fn(event, subId)
+// Handler registries
+const globalKindHandlers = new Map(); // kind → fn(event, subId) — run for all events of this kind, bypasses subId routing
+const kindHandlers = new Map(); // kind → fn(event, subId) — fallback when no subId handler matches
 const subIdHandlers = new Map(); // subId → fn(event)
 const subIdEOSEHandlers = new Map(); // subId → fn()
 const subIdClosedHandlers = new Map(); // subId → fn(url, message)
@@ -130,7 +131,8 @@ const replyEventIds = new Map(); // subId → Set<eventId> (dedup across relays)
 
 // ── Event handler registry setup ──────────────────────────────────────────────
 
-kindHandlers.set(0, (event, subId) => {
+// Kind 0 is always processed for metadata regardless of which subscription delivers it
+globalKindHandlers.set(0, (event, subId) => {
   handleMetadataEvent(event);
   if (subId === ownProfileSubId) populateProfileForm(event.pubkey);
 });
@@ -639,19 +641,11 @@ postBtn.addEventListener('click', async () => {
 function handleEvent(subId, event) {
   if (!verifyEvent(event)) return;
 
-  // kind 0 is always processed regardless of which subscription delivered it
-  if (event.kind === 0) {
-    kindHandlers.get(0)(event, subId);
-    return;
-  }
+  const gkh = globalKindHandlers.get(event.kind);
+  if (gkh) { gkh(event, subId); return; }
 
-  // subId-specific handler takes priority
-  if (subIdHandlers.has(subId)) {
-    subIdHandlers.get(subId)(event);
-    return;
-  }
+  if (subIdHandlers.has(subId)) { subIdHandlers.get(subId)(event); return; }
 
-  // fall back to kind handler
   const kh = kindHandlers.get(event.kind);
   if (kh) kh(event, subId);
 }
