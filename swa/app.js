@@ -844,11 +844,7 @@ function handleMetadataEvent(event) {
 async function handleVerifyIdentity(pubkey, identifier) {
   if (identityVerifyAttempted.has(pubkey)) return;
   identityVerifyAttempted.add(pubkey);
-  try {
-    await verifyIdentity(pubkey, identifier, (p, id) => store.setVerifiedIdentity(p, id));
-  } catch {
-    identityVerifyAttempted.delete(pubkey); // allow retry on transient failure
-  }
+  await verifyIdentity(pubkey, identifier, (p, id) => store.setVerifiedIdentity(p, id));
 }
 
 function populateProfileForm(pubkey) {
