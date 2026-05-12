@@ -5,9 +5,6 @@ on:
     types: [opened, synchronize, reopened]
     branches: [dev]
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
-
 jobs:
   check-branch:
     name: Validate branch name
@@ -28,7 +25,7 @@ jobs:
     name: Branch is in sync with dev
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - name: Verify branch is based on latest dev
