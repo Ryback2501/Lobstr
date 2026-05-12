@@ -106,6 +106,8 @@ const pool = new RelayPool({
 // Handler registries — replaces the closed if/else dispatcher in handleEvent
 const kindHandlers = new Map(); // kind → fn(event, subId)
 const subIdHandlers = new Map(); // subId → fn(event)
+const subIdEOSEHandlers = new Map(); // subId → fn()
+const subIdClosedHandlers = new Map(); // subId → fn(url, message)
 
 let ownProfileSubId = null;
 let followsSubId = null;
@@ -468,6 +470,11 @@ feedIdSearchBtn.addEventListener('click', () => {
   if (idSearchSubId) unsubscribeAll(idSearchSubId);
   idSearchSubId = crypto.randomUUID();
   subIdHandlers.set(idSearchSubId, (event) => store.addEvent(event));
+  subIdEOSEHandlers.set(idSearchSubId, () => {
+    if (store.events.length === 0) feedStatus.textContent = 'Event not found.';
+    else fetchMissingMetadata();
+  });
+  subIdClosedHandlers.set(idSearchSubId, (url, msg) => showSubClosedNotice(url, 'search', msg));
   feedStatus.textContent = 'Searching…';
   subscribeAll(idSearchSubId, [{ ids: [id], limit: 1 }]);
 });
@@ -650,64 +657,20 @@ function handleEvent(subId, event) {
 }
 
 function handleEOSE(subId) {
-  if (subId === followsSubId) {
-    if (store.follows.length === 0) {
-      followsStatus.textContent = 'Not following anyone yet.';
-    } else {
-      fetchMissingMetadata();
-    }
-  } else if (subId === feedSubId) {
-    if (store.events.length === 0) feedStatus.textContent = 'No events found.';
-    fetchMissingMetadata();
-    subscribeAttestations();
-  } else if (subId === idSearchSubId) {
-    if (store.events.length === 0) feedStatus.textContent = 'Event not found.';
-    else fetchMissingMetadata();
-  } else if (subId === mentionsSubId) {
-    if (store.mentions.length === 0) mentionsStatus.textContent = 'No mentions yet.';
-    fetchMissingMetadata();
-  } else if (subId === dmSubId) {
-    fetchMissingMetadata();
-    rerenderDmConvList();
-  } else if (replySubIdToContainer.has(subId)) {
-    const container = replySubIdToContainer.get(subId);
-    if (container.querySelector('.replies-loading')) {
-      container.querySelector('.replies-loading').remove();
-      const empty = document.createElement('div');
-      empty.className = 'replies-empty';
-      empty.textContent = 'No replies yet.';
-      container.appendChild(empty);
-    }
-  }
+  subIdEOSEHandlers.get(subId)?.();
 }
 
 function relayHostname(url) {
   try { return new URL(url).hostname; } catch { return url; }
 }
 
-function handleClosed(url, subId, message) {
-  const hostname = relayHostname(url);
-
-  const label = subId === feedSubId ? 'feed'
-    : subId === followsSubId ? 'follows'
-    : subId === ownProfileSubId ? 'profile'
-    : subId === metadataSubId ? 'metadata'
-    : subId === idSearchSubId ? 'search'
-    : subId === mentionsSubId ? 'mentions'
-    : subId === attestationSubId ? 'attestations'
-    : subId === dmSubId ? 'dms'
-    : replySubIdToContainer.has(subId) ? 'replies'
-    : 'unknown';
-  relayNotice.textContent = `[${hostname}] closed ${label} subscription: ${message || 'no reason given'}`;
+function showSubClosedNotice(url, label, message) {
+  relayNotice.textContent = `[${relayHostname(url)}] closed ${label} subscription: ${message || 'no reason given'}`;
   relayNotice.hidden = false;
+}
 
-  if (subId === feedSubId && !feedRetryTimer) {
-    feedStatus.textContent = 'Feed closed by relay. Retrying in 5s…';
-    feedRetryTimer = setTimeout(() => {
-      feedRetryTimer = null;
-      pool.resubscribeFor(url, feedSubId);
-    }, 5000);
-  }
+function handleClosed(url, subId, message) {
+  subIdClosedHandlers.get(subId)?.(url, message);
 }
 
 function handleNotice(url, message) {
@@ -738,6 +701,8 @@ function handleRelayStatus(url, status, wasAnyConnected) {
     mentionsSubId = null;
     pool.clearActiveSubs();
     subIdHandlers.clear();
+    subIdEOSEHandlers.clear();
+    subIdClosedHandlers.clear();
     attestationSubId = null;
     dmSubId = null;
     replySubscriptions.clear();
@@ -757,13 +722,20 @@ function isAnyConnected() { return pool.isAnyConnected(); }
 
 function subscribeAll(subId, filters) { pool.subscribe(subId, filters); }
 
-function unsubscribeAll(subId) { pool.unsubscribe(subId); subIdHandlers.delete(subId); }
+function unsubscribeAll(subId) {
+  pool.unsubscribe(subId);
+  subIdHandlers.delete(subId);
+  subIdEOSEHandlers.delete(subId);
+  subIdClosedHandlers.delete(subId);
+}
 
 function publishToAll(event) { return pool.publish(event); }
 
 function setupSubscriptions() {
   pool.clearActiveSubs();
   subIdHandlers.clear();
+  subIdEOSEHandlers.clear();
+  subIdClosedHandlers.clear();
   ownProfileSubId = null;
   followsSubId = null;
   feedSubId = null;
@@ -776,20 +748,37 @@ function setupSubscriptions() {
 
   if (store.signer) {
     ownProfileSubId = crypto.randomUUID();
-    // kind 0 is handled by the global kindHandlers.get(0) — no subId handler needed
+    subIdClosedHandlers.set(ownProfileSubId, (url, msg) => showSubClosedNotice(url, 'profile', msg));
     subscribeAll(ownProfileSubId, [{ kinds: [0], authors: [store.signer.pubkeyHex], limit: 1 }]);
 
     followsSubId = crypto.randomUUID();
     subIdHandlers.set(followsSubId, (event) => { if (event.kind === 3) handleFollowListEvent(event); });
+    subIdEOSEHandlers.set(followsSubId, () => {
+      if (store.follows.length === 0) {
+        followsStatus.textContent = 'Not following anyone yet.';
+      } else {
+        fetchMissingMetadata();
+      }
+    });
+    subIdClosedHandlers.set(followsSubId, (url, msg) => showSubClosedNotice(url, 'follows', msg));
     followsStatus.textContent = 'Loading follow list…';
     subscribeAll(followsSubId, [{ kinds: [3], authors: [store.signer.pubkeyHex], limit: 1 }]);
 
     mentionsSubId = crypto.randomUUID();
     subIdHandlers.set(mentionsSubId, (event) => store.addMention(event));
+    subIdEOSEHandlers.set(mentionsSubId, () => {
+      if (store.mentions.length === 0) mentionsStatus.textContent = 'No mentions yet.';
+      fetchMissingMetadata();
+    });
+    subIdClosedHandlers.set(mentionsSubId, (url, msg) => showSubClosedNotice(url, 'mentions', msg));
     subscribeAll(mentionsSubId, [{ kinds: [1], '#p': [store.signer.pubkeyHex], limit: 20 }]);
 
-    // kind 4 is handled globally by kindHandlers — dmSubId just subscribes the filter
     dmSubId = crypto.randomUUID();
+    subIdEOSEHandlers.set(dmSubId, () => {
+      fetchMissingMetadata();
+      rerenderDmConvList();
+    });
+    subIdClosedHandlers.set(dmSubId, (url, msg) => showSubClosedNotice(url, 'dms', msg));
     subscribeAll(dmSubId, [
       { kinds: [4], '#p': [store.signer.pubkeyHex], limit: 50 },
       { kinds: [4], authors: [store.signer.pubkeyHex], limit: 50 },
@@ -813,6 +802,21 @@ function subscribeToFeed() {
   if (feedSubId) unsubscribeAll(feedSubId);
   feedSubId = crypto.randomUUID();
   subIdHandlers.set(feedSubId, (event) => store.addEvent(event));
+  subIdEOSEHandlers.set(feedSubId, () => {
+    if (store.events.length === 0) feedStatus.textContent = 'No events found.';
+    fetchMissingMetadata();
+    subscribeAttestations();
+  });
+  subIdClosedHandlers.set(feedSubId, (url, msg) => {
+    showSubClosedNotice(url, 'feed', msg);
+    if (!feedRetryTimer) {
+      feedStatus.textContent = 'Feed closed by relay. Retrying in 5s…';
+      feedRetryTimer = setTimeout(() => {
+        feedRetryTimer = null;
+        pool.resubscribeFor(url, feedSubId);
+      }, 5000);
+    }
+  });
   store.clearEvents();
   feedStatus.textContent = 'Loading events…';
   subscribeAll(feedSubId, [buildFeedFilter()]);
@@ -866,6 +870,7 @@ function subscribeAttestations() {
   if (!ids.length) return;
   if (attestationSubId) unsubscribeAll(attestationSubId);
   attestationSubId = crypto.randomUUID();
+  subIdClosedHandlers.set(attestationSubId, (url, msg) => showSubClosedNotice(url, 'attestations', msg));
   subscribeAll(attestationSubId, [{ kinds: [1040], '#e': ids, limit: 50 }]);
 }
 
@@ -1026,6 +1031,7 @@ function fetchMissingMetadata() {
     if (!unknown.length) return;
     if (metadataSubId) unsubscribeAll(metadataSubId);
     metadataSubId = crypto.randomUUID();
+    subIdClosedHandlers.set(metadataSubId, (url, msg) => showSubClosedNotice(url, 'metadata', msg));
     subscribeAll(metadataSubId, [{ kinds: [0], authors: unknown, limit: unknown.length }]);
   }, 300);
 }
@@ -1214,6 +1220,16 @@ function makeRenderCallbacks() {
             );
           }
         });
+        subIdEOSEHandlers.set(subId, () => {
+          if (repliesContainer.querySelector('.replies-loading')) {
+            repliesContainer.querySelector('.replies-loading').remove();
+            const empty = document.createElement('div');
+            empty.className = 'replies-empty';
+            empty.textContent = 'No replies yet.';
+            repliesContainer.appendChild(empty);
+          }
+        });
+        subIdClosedHandlers.set(subId, (url, msg) => showSubClosedNotice(url, 'replies', msg));
         subscribeAll(subId, [{ kinds: [1], '#e': [event.id], limit: 20 }]);
       }
     },
