@@ -9,7 +9,7 @@ import {
   renderEvent, renderReply, renderFollowItem,
   getDisplayName, formatTime, createOtsBadge,
 } from './feedView.js';
-const SUPPORTED_SPECS = ['01', '02', '03', '04', '05', '06', '07'];
+const SUPPORTED_SPECS = ['01', '02', '03', '04', '05', '06', '07', '08'];
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 
@@ -619,7 +619,8 @@ postBtn.addEventListener('click', async () => {
   setPostResult('Publishing…', '');
 
   try {
-    const event = await createOwnEvent({ kind: 1, tags: [], content });
+    const { content: transformedContent, tags: mentionTags } = buildMentionEvent(content);
+    const event = await createOwnEvent({ kind: 1, tags: mentionTags, content: transformedContent });
     await publishToAll(event);
     store.addEvent(event);
     postContent.value = '';
@@ -1166,6 +1167,20 @@ function updateIdentityUI() {
   document.getElementById('local-key-btn-row').hidden = isExtension;
 }
 
+function buildMentionEvent(content, tagOffset = 0) {
+  const pTags = [];
+  const seen = new Map(); // pubkey → index within pTags
+  const transformed = content.replace(/@([0-9a-f]{64})/gi, (_, raw) => {
+    const pubkey = raw.toLowerCase();
+    if (!seen.has(pubkey)) {
+      seen.set(pubkey, tagOffset + pTags.length);
+      pTags.push(['p', pubkey]);
+    }
+    return `#[${seen.get(pubkey)}]`;
+  });
+  return { content: transformed, tags: pTags };
+}
+
 async function createOwnEvent({ kind, tags, content }) {
   if (!store.signer) throw new Error('No identity loaded.');
   return store.signer.signEvent({ created_at: Math.floor(Date.now() / 1000), kind, tags, content });
@@ -1209,10 +1224,12 @@ function makeRenderCallbacks() {
       try { await publishFollowList(); } catch { /* ignore relay error */ }
     },
     onReply: async (parentEvent, content) => {
+      const replyTags = [['e', parentEvent.id], ['p', parentEvent.pubkey]];
+      const { content: transformedContent, tags: mentionTags } = buildMentionEvent(content, replyTags.length);
       const event = await createOwnEvent({
         kind: 1,
-        tags: [['e', parentEvent.id], ['p', parentEvent.pubkey]],
-        content,
+        tags: [...replyTags, ...mentionTags],
+        content: transformedContent,
       });
       await publishToAll(event);
       store.addEvent(event);

@@ -64,6 +64,35 @@ export function createOtsBadge() {
   return badge;
 }
 
+function renderMentionContent(content, tags, profiles) {
+  const fragment = document.createDocumentFragment();
+  for (const part of content.split(/(#\[\d+\])/)) {
+    const match = part.match(/^#\[(\d+)\]$/);
+    if (match) {
+      const tag = tags[parseInt(match[1], 10)];
+      if (tag?.[0] === 'p') {
+        const name = getDisplayName(profiles?.get(tag[1]), tag[1].slice(0, 12) + '…');
+        const span = document.createElement('span');
+        span.className = 'mention';
+        span.textContent = '@' + name;
+        span.title = tag[1];
+        fragment.appendChild(span);
+        continue;
+      }
+      if (tag?.[0] === 'e') {
+        const span = document.createElement('span');
+        span.className = 'mention mention--event';
+        span.textContent = '#' + tag[1].slice(0, 8) + '…';
+        span.title = tag[1];
+        fragment.appendChild(span);
+        continue;
+      }
+    }
+    fragment.appendChild(document.createTextNode(part));
+  }
+  return fragment;
+}
+
 export function createAvatar(profile, displayName, pubkey) {
   const avatar = document.createElement('div');
   avatar.className = 'avatar';
@@ -140,7 +169,7 @@ export function renderEvent(event, slice, callbacks) {
 
   const content = document.createElement('div');
   content.className = 'event-content';
-  content.textContent = event.content;
+  content.appendChild(renderMentionContent(event.content, event.tags, profiles));
 
   const actions = document.createElement('div');
   actions.className = 'event-actions';
@@ -273,7 +302,7 @@ export function renderReply(event, slice) {
 
   const content = document.createElement('div');
   content.className = 'event-content';
-  content.textContent = event.content;
+  content.appendChild(renderMentionContent(event.content, event.tags, profiles));
 
   card.append(meta, content);
   return card;
