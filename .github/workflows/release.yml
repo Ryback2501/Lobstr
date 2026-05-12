@@ -48,8 +48,8 @@ jobs:
       - name: Zip SWA and browser extension
         run: |
           VERSION="${{ needs.read-version.outputs.version }}"
-          cd swa && zip -r "../swa-${VERSION}.zip" . && cd ..
-          cd browser && zip -r "../browser-${VERSION}.zip" . && cd ..
+          cd swa && zip -r "../swa-${VERSION}.zip" . -x "*.test.js" && cd ..
+          cd browser && zip -r "../browser-${VERSION}.zip" . -x "*.test.js" && cd ..
       - uses: actions/upload-artifact@v7
         with:
           name: release-artifacts
@@ -107,8 +107,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: actions/configure-pages@v6
+      - name: Prepare pages artifact
+        run: cp -r swa _site && find _site -name "*.test.js" -delete
       - uses: actions/upload-pages-artifact@v5
         with:
-          path: ./swa
+          path: ./_site
       - uses: actions/deploy-pages@v5
         id: deployment
