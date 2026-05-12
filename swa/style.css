@@ -547,6 +547,17 @@ details[open] > summary::before {
   line-height: 1.55;
 }
 
+.mention {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.mention--event {
+  color: var(--muted);
+  font-size: 0.85em;
+  font-family: monospace;
+}
+
 .reply-indicator {
   font-size: 0.72rem;
   color: var(--muted);
