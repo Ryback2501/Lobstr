@@ -9,7 +9,7 @@ import {
   renderEvent, renderReply, renderFollowItem,
   getDisplayName, formatTime, createOtsBadge,
 } from './feedView.js';
-const SUPPORTED_SPECS = ['01', '02', '03', '04', '05', '06', '07', '08', '09'];
+const SUPPORTED_SPECS = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10'];
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 
@@ -1172,6 +1172,30 @@ function updateIdentityUI() {
   document.getElementById('local-key-btn-row').hidden = isExtension;
 }
 
+function buildReplyTags(parentEvent) {
+  const parentETags = parentEvent.tags.filter(t => t[0] === 'e');
+  const tags = [];
+
+  if (parentETags.length === 0) {
+    tags.push(['e', parentEvent.id, '', 'root']);
+  } else {
+    const rootETag = parentETags.find(t => t[3] === 'root') || parentETags[0];
+    tags.push(['e', rootETag[1], rootETag[2] || '', 'root']);
+    tags.push(['e', parentEvent.id, '', 'reply']);
+  }
+
+  // p tags: parent author + existing thread participants, excluding self
+  const myPubkey = store.signer?.pubkeyHex;
+  const participants = new Set([parentEvent.pubkey]);
+  for (const t of parentEvent.tags) {
+    if (t[0] === 'p' && t[1]) participants.add(t[1]);
+  }
+  if (myPubkey) participants.delete(myPubkey);
+  for (const pk of participants) tags.push(['p', pk]);
+
+  return tags;
+}
+
 function buildMentionEvent(content, tagOffset = 0) {
   const pTags = [];
   const seen = new Map(); // pubkey → index within pTags
@@ -1240,7 +1264,7 @@ function makeRenderCallbacks() {
       try { await publishFollowList(); } catch { /* ignore relay error */ }
     },
     onReply: async (parentEvent, content) => {
-      const replyTags = [['e', parentEvent.id], ['p', parentEvent.pubkey]];
+      const replyTags = buildReplyTags(parentEvent);
       const { content: transformedContent, tags: mentionTags } = buildMentionEvent(content, replyTags.length);
       const event = await createOwnEvent({
         kind: 1,
