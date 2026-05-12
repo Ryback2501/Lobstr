@@ -5,6 +5,9 @@ on:
     types: [opened, synchronize, reopened]
     branches: [dev]
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 jobs:
   check-branch:
     name: Validate branch name
