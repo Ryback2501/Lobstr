@@ -21,7 +21,7 @@ jobs:
       - name: Read version
         id: version
         run: |
-          VERSION=$(grep -oP "(?<=')[^']+" swa/version.js)
+          VERSION=$(grep -oP "(?<=')[0-9]+\.[0-9]+\.[0-9]+(?=')" swa/version.js)
           echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Releasing version: $VERSION"
 
