@@ -450,7 +450,8 @@ details[open] > summary::before {
   margin-bottom: 0.75rem;
 }
 
-.feed-filters select {
+.feed-filters select,
+.btn-row select {
   background: var(--surface2);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -460,10 +461,12 @@ details[open] > summary::before {
   padding: 0.5rem 0.65rem;
   outline: none;
   cursor: pointer;
-  flex-shrink: 0;
 }
 
-.feed-filters select:focus {
+.feed-filters select { flex-shrink: 0; }
+
+.feed-filters select:focus,
+.btn-row select:focus {
   border-color: var(--accent);
 }
 
@@ -529,7 +532,8 @@ details[open] > summary::before {
   cursor: default;
 }
 
-.event-pubkey {
+.event-pubkey,
+.follow-pubkey {
   font-family: 'SFMono-Regular', Consolas, monospace;
   font-size: 0.72rem;
   color: var(--accent);
@@ -569,34 +573,25 @@ details[open] > summary::before {
   margin-top: 0.5rem;
 }
 
-.btn-reply {
-  font-size: 0.72rem;
-  padding: 0.2rem 0.55rem;
-  color: var(--muted);
-  background: transparent;
-  border-color: transparent;
-}
-
-.btn-reply:hover {
-  color: var(--text);
-  background: var(--surface2);
-  border-color: var(--border);
-}
-
+.btn-reply,
 .btn-delete {
   font-size: 0.72rem;
   padding: 0.2rem 0.55rem;
   color: var(--muted);
   background: transparent;
   border-color: transparent;
-  margin-left: auto;
 }
 
+.btn-delete { margin-left: auto; }
+
+.btn-reply:hover,
 .btn-delete:hover {
-  color: var(--red);
   background: var(--surface2);
   border-color: var(--border);
 }
+
+.btn-reply:hover { color: var(--text); }
+.btn-delete:hover { color: var(--red); }
 
 .reply-form {
   margin-top: 0.75rem;
@@ -672,13 +667,6 @@ details[open] > summary::before {
   min-width: 0;
 }
 
-.follow-pubkey {
-  font-family: 'SFMono-Regular', Consolas, monospace;
-  font-size: 0.72rem;
-  color: var(--accent);
-}
-
-
 .petname-input {
   font-size: 0.78rem;
   padding: 0.3rem 0.5rem;
@@ -701,21 +689,6 @@ details[open] > summary::before {
   border-color: var(--accent);
 }
 
-.btn-row select {
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text);
-  font-family: inherit;
-  font-size: 0.875rem;
-  padding: 0.5rem 0.65rem;
-  outline: none;
-  cursor: pointer;
-}
-
-.btn-row select:focus {
-  border-color: var(--accent);
-}
 
 .mnemonic-display {
   display: flex;
@@ -858,15 +831,20 @@ details[open] > summary::before {
   font-style: italic;
 }
 
-.btn-unfollow {
-  font-size: 0.75rem;
-  padding: 0.25rem 0.6rem;
-  flex-shrink: 0;
+.btn-unfollow,
+#logout-btn {
   color: var(--error);
   border-color: var(--error);
 }
 
-.btn-unfollow:hover {
+.btn-unfollow {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.6rem;
+  flex-shrink: 0;
+}
+
+.btn-unfollow:hover,
+#logout-btn:hover {
   background: rgba(239, 68, 68, 0.1);
 }
 
@@ -876,13 +854,4 @@ details[open] > summary::before {
   font-size: 0.78rem;
   color: var(--accent);
   padding: 0.2rem 0;
-}
-
-#logout-btn {
-  color: var(--error);
-  border-color: var(--error);
-}
-
-#logout-btn:hover {
-  background: rgba(239, 68, 68, 0.1);
 }
