@@ -10,15 +10,15 @@ jobs:
     name: Validate branch name
     runs-on: ubuntu-latest
     steps:
-      - name: Branch must match feature/*, fix/*, or chore/*
+      - name: Branch must match feature/*, fix/*, chore/*, or refactor/*
         env:
           HEAD: ${{ github.head_ref }}
         run: |
-          if echo "$HEAD" | grep -qE '^(feature|fix|chore)/.+'; then
+          if echo "$HEAD" | grep -qE '^(feature|fix|chore|refactor)/.+'; then
             echo "Branch '$HEAD' is valid."
             exit 0
           fi
-          echo "error: branch '$HEAD' must match feature/*, fix/*, or chore/*"
+          echo "error: branch '$HEAD' must match feature/*, fix/*, chore/*, or refactor/*"
           exit 1
 
   check-sync:
