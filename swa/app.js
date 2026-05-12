@@ -1,11 +1,11 @@
 import { generateKeypair, importPrivkey, verifyEvent } from './nostr.js';
 import { generateMnemonic, validateMnemonic, deriveNostrKeypair } from './mnemonic.js';
-import { RelayConnection } from './relay.js';
 import { store } from './store.js';
 import { LocalSigner, ExtensionSigner } from './signer.js';
 import { verifyIdentity } from './identityVerifier.js';
 import { VERSION } from './version.js';
 import { buildReplyTags, buildMentionEvent } from './threading.js';
+import { RelayPool } from './relayPool.js';
 import {
   renderEvent, renderReply, renderFollowItem,
   getDisplayName, formatTime, createOtsBadge,
@@ -95,8 +95,13 @@ const modalSpecsList = document.getElementById('modal-specs-list');
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
-const relays = new Map(); // url → { conn: RelayConnection|null, status: string }
-const activeSubs = new Map(); // subId → filters (all live REQs, for re-subscribing new relays)
+const pool = new RelayPool({
+  onEvent: handleEvent,
+  onEOSE: handleEOSE,
+  onClosed: handleClosed,
+  onNotice: handleNotice,
+  onStatus: handleRelayStatus,
+});
 
 // Handler registries — replaces the closed if/else dispatcher in handleEvent
 const kindHandlers = new Map(); // kind → fn(event, subId)
@@ -171,14 +176,14 @@ if (savedPrivkey) {
 
 updateIdentityUI();
 
-// Populate relay Map from store and auto-connect previously connected relays
+// Populate relay pool from store and auto-connect previously connected relays
 for (const url of store.relayUrls) {
-  relays.set(url, { conn: null, status: 'disconnected' });
+  pool.add(url);
 }
 rerenderRelayList();
 
 for (const url of store.connectedRelayUrls) {
-  if (relays.has(url)) connectRelay(url);
+  if (pool.has(url)) connectRelay(url);
 }
 
 // ── Store subscriptions ───────────────────────────────────────────────────────
@@ -480,44 +485,27 @@ function addRelay() {
     relayNotice.hidden = false;
     return;
   }
-  if (relays.has(url)) {
+  if (pool.has(url)) {
     relayNotice.textContent = 'Relay already in list.';
     relayNotice.hidden = false;
     return;
   }
   relayNotice.hidden = true;
-  relays.set(url, { conn: null, status: 'disconnected' });
-  store.setRelayUrls([...relays.keys()]);
+  pool.add(url);
+  store.setRelayUrls(pool.urls());
   relayAddInput.value = '';
   rerenderRelayList();
 }
 
 function connectRelay(url) {
-  const entry = relays.get(url);
-  if (!entry || entry.status === 'connected' || entry.status === 'connecting') return;
-
-  const conn = new RelayConnection(url, {
-    onEvent: handleEvent,
-    onEOSE: handleEOSE,
-    onClosed: (subId, message) => handleClosed(url, subId, message),
-    onNotice: (msg) => handleNotice(url, msg),
-    onStatus: (status) => handleRelayStatus(url, status),
-  });
-  entry.conn = conn;
-  conn.connect().catch(() => {});
-
+  pool.connect(url);
   const connected = store.connectedRelayUrls;
   connected.add(url);
   store.setConnectedRelayUrls(connected);
 }
 
 function disconnectRelay(url) {
-  const entry = relays.get(url);
-  if (entry?.conn) {
-    entry.conn.disconnect();
-    entry.conn = null;
-  }
-
+  pool.disconnect(url);
   const connected = store.connectedRelayUrls;
   connected.delete(url);
   store.setConnectedRelayUrls(connected);
@@ -525,8 +513,8 @@ function disconnectRelay(url) {
 
 function removeRelay(url) {
   disconnectRelay(url);
-  relays.delete(url);
-  store.setRelayUrls([...relays.keys()]);
+  pool.remove(url);
+  store.setRelayUrls(pool.urls());
   rerenderRelayList();
 }
 
@@ -717,10 +705,7 @@ function handleClosed(url, subId, message) {
     feedStatus.textContent = 'Feed closed by relay. Retrying in 5s…';
     feedRetryTimer = setTimeout(() => {
       feedRetryTimer = null;
-      const entry = relays.get(url);
-      if (entry?.status === 'connected' && entry.conn && activeSubs.has(feedSubId)) {
-        entry.conn.subscribe(feedSubId, activeSubs.get(feedSubId));
-      }
+      pool.resubscribeFor(url, feedSubId);
     }, 5000);
   }
 }
@@ -730,12 +715,7 @@ function handleNotice(url, message) {
   relayNotice.hidden = false;
 }
 
-function handleRelayStatus(url, status) {
-  const entry = relays.get(url);
-  if (!entry) return;
-
-  const wasAnyConnected = isAnyConnected();
-  entry.status = status;
+function handleRelayStatus(url, status, wasAnyConnected) {
   rerenderRelayList();
 
   if (status === 'connected') {
@@ -745,11 +725,6 @@ function handleRelayStatus(url, status) {
       store.clearMentions();
       store.setFollows([]);
       setupSubscriptions();
-    } else {
-      // Additional relay — subscribe it to all currently active subs
-      for (const [subId, filters] of activeSubs) {
-        entry.conn.subscribe(subId, filters);
-      }
     }
     updateFeedTabs();
   } else if (!isAnyConnected()) {
@@ -761,7 +736,7 @@ function handleRelayStatus(url, status) {
     clearTimeout(metadataDebounceTimer);
     idSearchSubId = null;
     mentionsSubId = null;
-    activeSubs.clear();
+    pool.clearActiveSubs();
     subIdHandlers.clear();
     attestationSubId = null;
     dmSubId = null;
@@ -778,38 +753,16 @@ function handleRelayStatus(url, status) {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function isAnyConnected() {
-  return [...relays.values()].some(e => e.status === 'connected');
-}
+function isAnyConnected() { return pool.isAnyConnected(); }
 
-function subscribeAll(subId, filters) {
-  activeSubs.set(subId, filters);
-  for (const { conn, status } of relays.values()) {
-    if (status === 'connected' && conn) conn.subscribe(subId, filters);
-  }
-}
+function subscribeAll(subId, filters) { pool.subscribe(subId, filters); }
 
-function unsubscribeAll(subId) {
-  activeSubs.delete(subId);
-  subIdHandlers.delete(subId);
-  for (const { conn, status } of relays.values()) {
-    if (status === 'connected' && conn) conn.unsubscribe(subId);
-  }
-}
+function unsubscribeAll(subId) { pool.unsubscribe(subId); subIdHandlers.delete(subId); }
 
-async function publishToAll(event) {
-  const connected = [...relays.values()].filter(e => e.status === 'connected' && e.conn);
-  if (!connected.length) throw new Error('Not connected to any relay.');
-  const results = await Promise.allSettled(connected.map(e => e.conn.publish(event)));
-  const accepted = results.filter(r => r.status === 'fulfilled');
-  if (!accepted.length) {
-    const err = results.find(r => r.status === 'rejected');
-    throw new Error(err?.reason?.message || 'All relays rejected the event.');
-  }
-}
+function publishToAll(event) { return pool.publish(event); }
 
 function setupSubscriptions() {
-  activeSubs.clear();
+  pool.clearActiveSubs();
   subIdHandlers.clear();
   ownProfileSubId = null;
   followsSubId = null;
@@ -1083,14 +1036,14 @@ function fetchMissingMetadata() {
 
 function rerenderRelayList() {
   relayListEl.innerHTML = '';
-  if (relays.size === 0) {
+  if (pool.size === 0) {
     const empty = document.createElement('p');
     empty.className = 'relay-list-empty';
     empty.textContent = 'No relays configured.';
     relayListEl.appendChild(empty);
     return;
   }
-  for (const [url, { status }] of relays) {
+  for (const [url, { status }] of pool.entries()) {
     const item = document.createElement('div');
     item.className = 'relay-item';
 
