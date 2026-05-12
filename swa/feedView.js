@@ -1,6 +1,8 @@
 // Pure render functions for feed, replies, and follow items.
 // Functions receive data slices and return DOM nodes — they never read from store directly.
 
+import { resolveReplyTag } from './threading.js';
+
 export function formatTime(unixSec) {
   const diff = Math.floor(Date.now() / 1000) - unixSec;
   if (diff < 60) return `${diff}s ago`;
@@ -27,9 +29,7 @@ export function getReplyLabel(event, { events, profiles }) {
   const aTags = event.tags.filter(t => t[0] === 'a');
 
   if (eTags.length > 0) {
-    const refTag = eTags.find(t => t[3] === 'reply')
-      || eTags.find(t => t[3] === 'root')
-      || eTags[eTags.length - 1];
+    const refTag = resolveReplyTag(eTags);
     const refId = refTag[1];
     const refEvent = events.find(e => e.id === refId);
     const refProfile = refEvent ? profiles.get(refEvent.pubkey) : null;

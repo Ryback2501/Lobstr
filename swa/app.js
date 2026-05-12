@@ -5,6 +5,7 @@ import { store } from './store.js';
 import { LocalSigner, ExtensionSigner } from './signer.js';
 import { verifyIdentity } from './identityVerifier.js';
 import { VERSION } from './version.js';
+import { buildReplyTags, buildMentionEvent } from './threading.js';
 import {
   renderEvent, renderReply, renderFollowItem,
   getDisplayName, formatTime, createOtsBadge,
@@ -1172,44 +1173,6 @@ function updateIdentityUI() {
   document.getElementById('local-key-btn-row').hidden = isExtension;
 }
 
-function buildReplyTags(parentEvent) {
-  const parentETags = parentEvent.tags.filter(t => t[0] === 'e');
-  const tags = [];
-
-  if (parentETags.length === 0) {
-    tags.push(['e', parentEvent.id, '', 'root']);
-  } else {
-    const rootETag = parentETags.find(t => t[3] === 'root') || parentETags[0];
-    tags.push(['e', rootETag[1], rootETag[2] || '', 'root']);
-    tags.push(['e', parentEvent.id, '', 'reply']);
-  }
-
-  // p tags: parent author + existing thread participants, excluding self
-  const myPubkey = store.signer?.pubkeyHex;
-  const participants = new Set([parentEvent.pubkey]);
-  for (const t of parentEvent.tags) {
-    if (t[0] === 'p' && t[1]) participants.add(t[1]);
-  }
-  if (myPubkey) participants.delete(myPubkey);
-  for (const pk of participants) tags.push(['p', pk]);
-
-  return tags;
-}
-
-function buildMentionEvent(content, tagOffset = 0) {
-  const pTags = [];
-  const seen = new Map(); // pubkey → index within pTags
-  const transformed = content.replace(/@([0-9a-f]{64})/gi, (_, raw) => {
-    const pubkey = raw.toLowerCase();
-    if (!seen.has(pubkey)) {
-      seen.set(pubkey, tagOffset + pTags.length);
-      pTags.push(['p', pubkey]);
-    }
-    return `#[${seen.get(pubkey)}]`;
-  });
-  return { content: transformed, tags: pTags };
-}
-
 async function handleDeleteEvent(event) {
   const deletionEvent = await createOwnEvent({
     kind: 5,
@@ -1264,7 +1227,7 @@ function makeRenderCallbacks() {
       try { await publishFollowList(); } catch { /* ignore relay error */ }
     },
     onReply: async (parentEvent, content) => {
-      const replyTags = buildReplyTags(parentEvent);
+      const replyTags = buildReplyTags(parentEvent, store.signer?.pubkeyHex);
       const { content: transformedContent, tags: mentionTags } = buildMentionEvent(content, replyTags.length);
       const event = await createOwnEvent({
         kind: 1,
