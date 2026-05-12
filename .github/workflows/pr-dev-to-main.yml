@@ -5,9 +5,6 @@ on:
     types: [opened, synchronize, reopened]
     branches: [main]
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
-
 jobs:
   check-source:
     name: Source must be dev
@@ -26,7 +23,7 @@ jobs:
     name: dev contains all of main
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - name: Verify dev is not missing commits from main
@@ -46,7 +43,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - name: Read version
