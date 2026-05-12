@@ -6,6 +6,8 @@ export class LocalSigner {
     this.pubkeyHex = pubkeyHex;
   }
 
+  async init() { return this; }
+
   async signEvent(draft) {
     return createEvent({
       privkeyHex: this.privkeyHex,
