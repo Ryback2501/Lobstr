@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveReplyTag, buildReplyTags, buildMentionEvent } from './threading.js';
+import { resolveReplyTag, buildReplyTags, buildMentionEvent, buildQuoteTag } from './threading.js';
 
 const HEX_A = 'a'.repeat(64);
 const HEX_B = 'b'.repeat(64);
@@ -176,4 +176,22 @@ test('buildMentionEvent: duplicate event-ID mention reuses same index', () => {
   const result = buildMentionEvent(`@${HEX_A} and @${HEX_A}`, 0, new Set([HEX_A]));
   assert.equal(result.content, '#[0] and #[0]');
   assert.deepEqual(result.tags, [['e', HEX_A]]);
+});
+
+// ── buildQuoteTag ────────────────────────────────────────────────────────────
+
+test('buildQuoteTag: returns q tag with event id and pubkey', () => {
+  const quoted = { id: HEX_A, pubkey: HEX_B };
+  assert.deepEqual(buildQuoteTag(quoted), ['q', HEX_A, '', HEX_B]);
+});
+
+test('buildQuoteTag: uses empty relay hint by default', () => {
+  const quoted = { id: HEX_A, pubkey: HEX_B };
+  assert.equal(buildQuoteTag(quoted)[2], '');
+});
+
+test('buildQuoteTag: includes provided relay hint', () => {
+  const quoted = { id: HEX_A, pubkey: HEX_B };
+  const tag = buildQuoteTag(quoted, 'wss://relay.example.com');
+  assert.deepEqual(tag, ['q', HEX_A, 'wss://relay.example.com', HEX_B]);
 });

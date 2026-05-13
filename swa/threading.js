@@ -47,6 +47,17 @@ export function buildReplyTags(parentEvent, myPubkey) {
 }
 
 /**
+ * Builds a NIP-10 q tag for quoting an event.
+ * Format: ["q", event-id, relay-url, pubkey]
+ * @param {object} quotedEvent - must have .id and .pubkey
+ * @param {string} [relayHint='']
+ * @returns {Array}
+ */
+export function buildQuoteTag(quotedEvent, relayHint = '') {
+  return ['q', quotedEvent.id, relayHint, quotedEvent.pubkey];
+}
+
+/**
  * Scans content for @<64-hex-char> patterns, replaces each with a NIP-08 #[n]
  * reference, and returns the corresponding p/e tags.
  * tagOffset accounts for any tags that will precede these in the final tag array
