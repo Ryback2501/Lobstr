@@ -38,7 +38,7 @@ test('buildReplyTags: direct reply to root emits single root e tag', () => {
   const parent = { id: 'abc', pubkey: HEX_A, tags: [] };
   const tags = buildReplyTags(parent, HEX_C);
   assert.deepEqual(tags, [
-    ['e', 'abc', '', 'root'],
+    ['e', 'abc', '', 'root', HEX_A],
     ['p', HEX_A],
   ]);
 });
@@ -51,8 +51,8 @@ test('buildReplyTags: reply to reply emits root + reply e tags', () => {
   };
   const tags = buildReplyTags(parent, HEX_C);
   assert.deepEqual(tags, [
-    ['e', 'root-id', '', 'root'],
-    ['e', 'reply-id', '', 'reply'],
+    ['e', 'root-id', '', 'root', ''],
+    ['e', 'reply-id', '', 'reply', HEX_B],
     ['p', HEX_B],
     ['p', HEX_A],
   ]);
@@ -76,21 +76,32 @@ test('buildReplyTags: positional parent tags use first e tag as root', () => {
   };
   const tags = buildReplyTags(parent, HEX_C);
   assert.deepEqual(tags.slice(0, 2), [
-    ['e', 'root-id', '', 'root'],
-    ['e', 'reply-id', '', 'reply'],
+    ['e', 'root-id', '', 'root', ''],
+    ['e', 'reply-id', '', 'reply', HEX_B],
   ]);
 });
 
 test('buildReplyTags: excludes own pubkey from p tags', () => {
   const parent = { id: 'abc', pubkey: HEX_A, tags: [] };
   const tags = buildReplyTags(parent, HEX_A);
-  assert.deepEqual(tags, [['e', 'abc', '', 'root']]);
+  assert.deepEqual(tags, [['e', 'abc', '', 'root', HEX_A]]);
 });
 
 test('buildReplyTags: no myPubkey keeps all participants', () => {
   const parent = { id: 'abc', pubkey: HEX_A, tags: [] };
   const tags = buildReplyTags(parent);
-  assert.deepEqual(tags, [['e', 'abc', '', 'root'], ['p', HEX_A]]);
+  assert.deepEqual(tags, [['e', 'abc', '', 'root', HEX_A], ['p', HEX_A]]);
+});
+
+test('buildReplyTags: propagates root author pubkey from parent e tag', () => {
+  const parent = {
+    id: 'reply-id',
+    pubkey: HEX_B,
+    tags: [['e', 'root-id', '', 'root', HEX_C]],
+  };
+  const tags = buildReplyTags(parent, 'f'.repeat(64));
+  assert.equal(tags[0][4], HEX_C);
+  assert.equal(tags[1][4], HEX_B);
 });
 
 test('buildReplyTags: deduplicates participants already in parent p tags', () => {

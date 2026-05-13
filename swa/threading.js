@@ -29,11 +29,11 @@ export function buildReplyTags(parentEvent, myPubkey) {
   const tags = [];
 
   if (parentETags.length === 0) {
-    tags.push(['e', parentEvent.id, '', 'root']);
+    tags.push(['e', parentEvent.id, '', 'root', parentEvent.pubkey]);
   } else {
     const rootETag = parentETags.find(t => t[3] === 'root') || parentETags[0];
-    tags.push(['e', rootETag[1], rootETag[2] || '', 'root']);
-    tags.push(['e', parentEvent.id, '', 'reply']);
+    tags.push(['e', rootETag[1], rootETag[2] || '', 'root', rootETag[4] || '']);
+    tags.push(['e', parentEvent.id, '', 'reply', parentEvent.pubkey]);
   }
 
   const participants = new Set([parentEvent.pubkey]);
