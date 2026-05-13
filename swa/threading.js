@@ -48,23 +48,25 @@ export function buildReplyTags(parentEvent, myPubkey) {
 
 /**
  * Scans content for @<64-hex-char> patterns, replaces each with a NIP-08 #[n]
- * reference, and returns the corresponding p tags.
+ * reference, and returns the corresponding p/e tags.
  * tagOffset accounts for any tags that will precede these in the final tag array
- * (e.g. reply e/p tags).
+ * (e.g. reply e/p tags). Hex values present in eventIds produce ["e", …] tags;
+ * all others produce ["p", …] tags.
  * @param {string} content
  * @param {number} [tagOffset=0]
+ * @param {Set<string>} [eventIds]
  * @returns {{ content: string, tags: Array[] }}
  */
-export function buildMentionEvent(content, tagOffset = 0) {
-  const pTags = [];
+export function buildMentionEvent(content, tagOffset = 0, eventIds = new Set()) {
+  const mentionTags = [];
   const seen = new Map();
   const transformed = content.replace(/@([0-9a-f]{64})/gi, (_, raw) => {
-    const pubkey = raw.toLowerCase();
-    if (!seen.has(pubkey)) {
-      seen.set(pubkey, tagOffset + pTags.length);
-      pTags.push(['p', pubkey]);
+    const hex = raw.toLowerCase();
+    if (!seen.has(hex)) {
+      seen.set(hex, tagOffset + mentionTags.length);
+      mentionTags.push([eventIds.has(hex) ? 'e' : 'p', hex]);
     }
-    return `#[${seen.get(pubkey)}]`;
+    return `#[${seen.get(hex)}]`;
   });
-  return { content: transformed, tags: pTags };
+  return { content: transformed, tags: mentionTags };
 }

@@ -148,3 +148,21 @@ test('buildMentionEvent: non-hex or short patterns are not replaced', () => {
   assert.equal(result.content, '@notahex @tooshort');
   assert.deepEqual(result.tags, []);
 });
+
+test('buildMentionEvent: event-ID mention produces e tag when id is in eventIds set', () => {
+  const result = buildMentionEvent(`quoting @${HEX_A}`, 0, new Set([HEX_A]));
+  assert.equal(result.content, 'quoting #[0]');
+  assert.deepEqual(result.tags, [['e', HEX_A]]);
+});
+
+test('buildMentionEvent: mixes p and e tags when some hexes are event IDs', () => {
+  const result = buildMentionEvent(`@${HEX_A} @${HEX_B}`, 0, new Set([HEX_B]));
+  assert.equal(result.content, '#[0] #[1]');
+  assert.deepEqual(result.tags, [['p', HEX_A], ['e', HEX_B]]);
+});
+
+test('buildMentionEvent: duplicate event-ID mention reuses same index', () => {
+  const result = buildMentionEvent(`@${HEX_A} and @${HEX_A}`, 0, new Set([HEX_A]));
+  assert.equal(result.content, '#[0] and #[0]');
+  assert.deepEqual(result.tags, [['e', HEX_A]]);
+});
