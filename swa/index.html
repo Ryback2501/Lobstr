@@ -28,6 +28,25 @@
     </div>
   </div>
 
+  <div id="relay-info-modal" class="modal-overlay" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="relay-modal-name">
+      <button id="relay-modal-close" class="modal-close" aria-label="Close">&times;</button>
+      <img id="relay-modal-icon" class="relay-modal-icon" hidden alt="">
+      <h2 id="relay-modal-name"></h2>
+      <p id="relay-modal-url" class="relay-modal-url"></p>
+      <p id="relay-modal-description" class="relay-modal-description" hidden></p>
+      <dl id="relay-modal-meta" class="relay-modal-meta"></dl>
+      <div id="relay-modal-nips-section" class="relay-modal-section" hidden>
+        <p class="modal-specs-label">Supported NIPs</p>
+        <div id="relay-modal-nips" class="specs-list"></div>
+      </div>
+      <div id="relay-modal-limits-section" class="relay-modal-section" hidden>
+        <p class="modal-specs-label">Limitations</p>
+        <dl id="relay-modal-limits" class="relay-modal-limits"></dl>
+      </div>
+    </div>
+  </div>
+
   <main>
     <section id="keys-panel" class="panel">
       <h2>Identity</h2>
