@@ -151,6 +151,7 @@ function showMnemonic(mnemonic) {
     num.className = 'mnemonic-word-num';
     num.textContent = i + 1;
     const text = document.createElement('span');
+    text.className = 'mnemonic-word-text';
     text.textContent = word;
     chip.append(num, text);
     mnemonicDisplay.appendChild(chip);
