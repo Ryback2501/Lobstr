@@ -768,14 +768,15 @@ details[open] > summary::before {
 
 .ots-badge {
   font-size: 0.68rem;
+  font-family: inherit;
   padding: 0.1rem 0.35rem;
   border-radius: 4px;
   background: var(--surface2);
   border: 1px solid var(--border);
   color: var(--muted);
-  text-decoration: none;
   white-space: nowrap;
   flex-shrink: 0;
+  cursor: pointer;
 }
 
 .ots-badge:hover {

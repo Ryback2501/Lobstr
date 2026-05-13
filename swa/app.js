@@ -253,10 +253,11 @@ store.on('verifiedIdentity', (pubkey) => {
 });
 
 store.on('attestation', (eventId) => {
+  const attestation = store.attestations.get(eventId);
   for (const list of [eventsList, mentionsList]) {
     const card = list.querySelector(`[data-event-id="${eventId}"]`);
     if (card && !card.querySelector('.ots-badge')) {
-      card.querySelector('.event-meta-left')?.appendChild(createOtsBadge());
+      card.querySelector('.event-meta-left')?.appendChild(createOtsBadge(attestation.raw, eventId));
     }
   }
 });
