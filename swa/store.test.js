@@ -123,6 +123,26 @@ test('addEvent: kind 10000 is replaceable', () => {
   assert.equal(store.events.length, 1);
 });
 
+test('addEvent: replaces replaceable event when timestamps tie and incoming id is lexically lower', () => {
+  const store = createStore(makeStorage(), makeStorage());
+  const stored  = makeEvent({ id: 'b'.repeat(64), kind: 0, created_at: 100 });
+  const incoming = makeEvent({ id: 'a'.repeat(64), kind: 0, created_at: 100 });
+  store.addEvent(stored);
+  store.addEvent(incoming);
+  assert.equal(store.events.length, 1);
+  assert.equal(store.events[0].id, 'a'.repeat(64));
+});
+
+test('addEvent: keeps stored replaceable event when timestamps tie and stored id is lexically lower', () => {
+  const store = createStore(makeStorage(), makeStorage());
+  const stored  = makeEvent({ id: 'a'.repeat(64), kind: 0, created_at: 100 });
+  const incoming = makeEvent({ id: 'b'.repeat(64), kind: 0, created_at: 100 });
+  store.addEvent(stored);
+  store.addEvent(incoming);
+  assert.equal(store.events.length, 1);
+  assert.equal(store.events[0].id, 'a'.repeat(64));
+});
+
 // ── addEvent: addressable kind ────────────────────────────────────────────────
 
 test('addEvent: replaces addressable event with same pubkey+kind+d-tag', () => {
@@ -144,6 +164,26 @@ test('addEvent: keeps distinct addressable events with different d-tags', () => 
   assert.equal(store.events.length, 2);
 });
 
+test('addEvent: replaces addressable event when timestamps tie and incoming id is lexically lower', () => {
+  const store = createStore(makeStorage(), makeStorage());
+  const stored   = makeEvent({ id: 'b'.repeat(64), kind: 30000, tags: [['d', 'x']], created_at: 100 });
+  const incoming = makeEvent({ id: 'a'.repeat(64), kind: 30000, tags: [['d', 'x']], created_at: 100 });
+  store.addEvent(stored);
+  store.addEvent(incoming);
+  assert.equal(store.events.length, 1);
+  assert.equal(store.events[0].id, 'a'.repeat(64));
+});
+
+test('addEvent: keeps stored addressable event when timestamps tie and stored id is lexically lower', () => {
+  const store = createStore(makeStorage(), makeStorage());
+  const stored   = makeEvent({ id: 'a'.repeat(64), kind: 30000, tags: [['d', 'x']], created_at: 100 });
+  const incoming = makeEvent({ id: 'b'.repeat(64), kind: 30000, tags: [['d', 'x']], created_at: 100 });
+  store.addEvent(stored);
+  store.addEvent(incoming);
+  assert.equal(store.events.length, 1);
+  assert.equal(store.events[0].id, 'a'.repeat(64));
+});
+
 // ── removeEvent ───────────────────────────────────────────────────────────────
 
 test('removeEvent: removes by id and emits eventRemoved', () => {
@@ -161,6 +201,57 @@ test('removeEvent: noop for unknown id', () => {
   const store = createStore(makeStorage(), makeStorage());
   store.on('eventRemoved', () => { throw new Error('should not fire'); });
   store.removeEvent('z'.repeat(64));
+});
+
+// ── removeAddressableEvent ────────────────────────────────────────────────────
+
+test('removeAddressableEvent: removes matching addressable event and emits eventRemoved', () => {
+  const store = createStore(makeStorage(), makeStorage());
+  const removed = [];
+  store.on('eventRemoved', (id) => removed.push(id));
+  const e = makeEvent({ kind: 30023, tags: [['d', 'my-article']] });
+  store.addEvent(e);
+  store.removeAddressableEvent(30023, e.pubkey, 'my-article');
+  assert.equal(store.events.length, 0);
+  assert.equal(removed[0], e.id);
+});
+
+test('removeAddressableEvent: noop when kind does not match', () => {
+  const store = createStore(makeStorage(), makeStorage());
+  store.on('eventRemoved', () => { throw new Error('should not fire'); });
+  const e = makeEvent({ kind: 30023, tags: [['d', 'slug']] });
+  store.addEvent(e);
+  store.removeAddressableEvent(30024, e.pubkey, 'slug');
+  assert.equal(store.events.length, 1);
+});
+
+test('removeAddressableEvent: noop when pubkey does not match', () => {
+  const store = createStore(makeStorage(), makeStorage());
+  store.on('eventRemoved', () => { throw new Error('should not fire'); });
+  const e = makeEvent({ kind: 30023, pubkey: 'a'.repeat(64), tags: [['d', 'slug']] });
+  store.addEvent(e);
+  store.removeAddressableEvent(30023, 'b'.repeat(64), 'slug');
+  assert.equal(store.events.length, 1);
+});
+
+test('removeAddressableEvent: noop when d-tag value does not match', () => {
+  const store = createStore(makeStorage(), makeStorage());
+  store.on('eventRemoved', () => { throw new Error('should not fire'); });
+  const e = makeEvent({ kind: 30023, tags: [['d', 'slug-a']] });
+  store.addEvent(e);
+  store.removeAddressableEvent(30023, e.pubkey, 'slug-b');
+  assert.equal(store.events.length, 1);
+});
+
+test('removeAddressableEvent: matches event with empty d-tag when called with empty string', () => {
+  const store = createStore(makeStorage(), makeStorage());
+  const removed = [];
+  store.on('eventRemoved', (id) => removed.push(id));
+  const e = makeEvent({ kind: 30000, tags: [] });
+  store.addEvent(e);
+  store.removeAddressableEvent(30000, e.pubkey, '');
+  assert.equal(store.events.length, 0);
+  assert.equal(removed[0], e.id);
 });
 
 // ── clearEvents ───────────────────────────────────────────────────────────────

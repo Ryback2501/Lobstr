@@ -89,7 +89,9 @@ export function createStore(ls, ss) {
           e => e.pubkey === event.pubkey && e.kind === event.kind
         );
         if (idx !== -1) {
-          if (event.created_at <= this.events[idx].created_at) return;
+          const existing = this.events[idx];
+          if (event.created_at < existing.created_at) return;
+          if (event.created_at === existing.created_at && event.id >= existing.id) return;
           this.events.splice(idx, 1);
         }
       } else if (classification === 'addressable') {
@@ -99,7 +101,9 @@ export function createStore(ls, ss) {
           return e.pubkey === event.pubkey && e.kind === event.kind && existingD === dTag;
         });
         if (idx !== -1) {
-          if (event.created_at <= this.events[idx].created_at) return;
+          const existing = this.events[idx];
+          if (event.created_at < existing.created_at) return;
+          if (event.created_at === existing.created_at && event.id >= existing.id) return;
           this.events.splice(idx, 1);
         }
       } else {
@@ -116,6 +120,17 @@ export function createStore(ls, ss) {
       if (idx === -1) return;
       this.events.splice(idx, 1);
       emit('eventRemoved', eventId);
+    },
+
+    removeAddressableEvent(kind, pubkey, dTagValue) {
+      const idx = this.events.findIndex(e =>
+        e.kind === kind &&
+        e.pubkey === pubkey &&
+        (e.tags.find(t => t[0] === 'd')?.[1] ?? '') === dTagValue,
+      );
+      if (idx === -1) return;
+      const [removed] = this.events.splice(idx, 1);
+      emit('eventRemoved', removed.id);
     },
 
     clearEvents() {

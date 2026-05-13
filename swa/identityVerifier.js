@@ -4,6 +4,7 @@ export async function verifyIdentity(pubkey, identifier, onVerified, fetcher = f
   const local = identifier.slice(0, at).toLowerCase();
   const domain = identifier.slice(at + 1).toLowerCase();
   if (!local || !domain) return;
+  if (!/^[a-z0-9_-]+$/.test(local)) return;
   try {
     const url = new URL(`https://${domain}/.well-known/nostr.json`);
     url.searchParams.set('name', local);

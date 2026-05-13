@@ -25,6 +25,14 @@ export class LocalSigner {
   async decrypt(senderPubkeyHex, ciphertext) {
     return decryptDm(this.privkeyHex, senderPubkeyHex, ciphertext);
   }
+
+  async nip44Encrypt() {
+    throw new Error('NIP-44 encryption is not available without a signing extension.');
+  }
+
+  async nip44Decrypt() {
+    throw new Error('NIP-44 encryption is not available without a signing extension.');
+  }
 }
 
 export class ExtensionSigner {
@@ -55,5 +63,15 @@ export class ExtensionSigner {
   async decrypt(senderPubkeyHex, ciphertext) {
     if (!this._nostr.nip04) throw new Error('Encrypted messaging is not supported by the connected extension.');
     return this._nostr.nip04.decrypt(senderPubkeyHex, ciphertext);
+  }
+
+  async nip44Encrypt(recipientPubkeyHex, plaintext) {
+    if (!this._nostr.nip44) throw new Error('NIP-44 encryption is not supported by the connected extension.');
+    return this._nostr.nip44.encrypt(recipientPubkeyHex, plaintext);
+  }
+
+  async nip44Decrypt(senderPubkeyHex, ciphertext) {
+    if (!this._nostr.nip44) throw new Error('NIP-44 encryption is not supported by the connected extension.');
+    return this._nostr.nip44.decrypt(senderPubkeyHex, ciphertext);
   }
 }

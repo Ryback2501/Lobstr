@@ -74,6 +74,10 @@ async function handleNostrRequest({ method, params = [] }, sender) {
       return decryptDm(keys.privkeyHex, senderPubkey, ciphertext);
     }
 
+    case 'nip44.encrypt':
+    case 'nip44.decrypt':
+      throw new Error('NIP-44 encryption is not yet supported for local keys. Use a NIP-44 compatible extension.');
+
     default:
       throw new Error(`Unknown method: ${method}`);
   }

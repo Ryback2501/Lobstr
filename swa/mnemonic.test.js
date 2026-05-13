@@ -127,6 +127,22 @@ test('deriveNostrKeypair: passphrase changes the derived keypair', async () => {
   assert.notEqual(without.privkeyHex, withPass.privkeyHex);
 });
 
+// ── NIP-06: official test vector 2 (24-word mnemonic) ────────────────────────
+
+const NIP06_V2_MNEMONIC = 'what bleak badge arrange retreat wolf trade produce cricket blur garlic valid proud rude strong choose busy staff weather area salt hollow arm fade';
+const NIP06_V2_PRIV = 'c15d739894c81a2fcfd3a2df85a0d2c0dbc47a280d092799f144d73d7ae78add';
+const NIP06_V2_PUB  = 'd41b22899549e1f3d335a31002cfd382174006e166d3e658e3a5eecdb6463573';
+
+test('deriveNostrKeypair: NIP-06 official 24-word vector — privkey', async () => {
+  const { privkeyHex } = await deriveNostrKeypair(NIP06_V2_MNEMONIC);
+  assert.equal(privkeyHex, NIP06_V2_PRIV);
+});
+
+test('deriveNostrKeypair: NIP-06 official 24-word vector — pubkey', async () => {
+  const { pubkeyHex } = await deriveNostrKeypair(NIP06_V2_MNEMONIC);
+  assert.equal(pubkeyHex, NIP06_V2_PUB);
+});
+
 test('deriveNostrKeypair: result has correct hex format', async () => {
   const { privkeyHex, pubkeyHex } = await deriveNostrKeypair(
     'leader monkey parrot ring guide accident before fence cannon height naive bean',

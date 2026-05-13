@@ -82,6 +82,36 @@ test('serializeEvent: produces the canonical JSON array', () => {
   assert.equal(s, JSON.stringify([0, 'pubkey', 1700000000, 1, [['e', 'abc']], 'hello']));
 });
 
+test('serializeEvent: escapes newline in content', () => {
+  const s = serializeEvent('pk', 0, 1, [], 'line1\nline2');
+  assert.ok(s.includes('\\n'));
+  assert.equal(JSON.parse(s)[5], 'line1\nline2');
+});
+
+test('serializeEvent: escapes double quote in content', () => {
+  const s = serializeEvent('pk', 0, 1, [], 'say "hello"');
+  assert.ok(s.includes('\\"'));
+  assert.equal(JSON.parse(s)[5], 'say "hello"');
+});
+
+test('serializeEvent: escapes backslash in content', () => {
+  const s = serializeEvent('pk', 0, 1, [], 'path\\to\\file');
+  assert.ok(s.includes('\\\\'));
+  assert.equal(JSON.parse(s)[5], 'path\\to\\file');
+});
+
+test('serializeEvent: escapes tab and carriage-return in content', () => {
+  const s = serializeEvent('pk', 0, 1, [], 'col1\tcol2\rend');
+  assert.ok(s.includes('\\t'));
+  assert.ok(s.includes('\\r'));
+  assert.equal(JSON.parse(s)[5], 'col1\tcol2\rend');
+});
+
+test('getEventId: is stable for content with special characters', () => {
+  const s = serializeEvent('pk', 0, 1, [], 'line1\nline2\t"quoted"\\back');
+  assert.equal(getEventId(s), getEventId(s));
+});
+
 // ── NIP-01: getEventId ────────────────────────────────────────────────────────
 
 test('getEventId: returns a 64-char hex string', () => {
@@ -155,6 +185,10 @@ test('classifyEvent: kind 0 (profile metadata) → replaceable', () => {
 
 test('classifyEvent: kind 1 (text note) → regular', () => {
   assert.equal(classifyEvent({ kind: 1 }), 'regular');
+});
+
+test('classifyEvent: kind 2 (obsolete recommend-server) → regular', () => {
+  assert.equal(classifyEvent({ kind: 2 }), 'regular');
 });
 
 test('classifyEvent: kind 3 (follow list, NIP-02) → replaceable', () => {

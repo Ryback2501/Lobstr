@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveReplyTag, buildReplyTags, buildMentionEvent } from './threading.js';
+import { resolveReplyTag, buildReplyTags, buildMentionEvent, buildQuoteTag } from './threading.js';
 
 const HEX_A = 'a'.repeat(64);
 const HEX_B = 'b'.repeat(64);
@@ -38,7 +38,7 @@ test('buildReplyTags: direct reply to root emits single root e tag', () => {
   const parent = { id: 'abc', pubkey: HEX_A, tags: [] };
   const tags = buildReplyTags(parent, HEX_C);
   assert.deepEqual(tags, [
-    ['e', 'abc', '', 'root'],
+    ['e', 'abc', '', 'root', HEX_A],
     ['p', HEX_A],
   ]);
 });
@@ -51,8 +51,8 @@ test('buildReplyTags: reply to reply emits root + reply e tags', () => {
   };
   const tags = buildReplyTags(parent, HEX_C);
   assert.deepEqual(tags, [
-    ['e', 'root-id', '', 'root'],
-    ['e', 'reply-id', '', 'reply'],
+    ['e', 'root-id', '', 'root', ''],
+    ['e', 'reply-id', '', 'reply', HEX_B],
     ['p', HEX_B],
     ['p', HEX_A],
   ]);
@@ -76,21 +76,32 @@ test('buildReplyTags: positional parent tags use first e tag as root', () => {
   };
   const tags = buildReplyTags(parent, HEX_C);
   assert.deepEqual(tags.slice(0, 2), [
-    ['e', 'root-id', '', 'root'],
-    ['e', 'reply-id', '', 'reply'],
+    ['e', 'root-id', '', 'root', ''],
+    ['e', 'reply-id', '', 'reply', HEX_B],
   ]);
 });
 
 test('buildReplyTags: excludes own pubkey from p tags', () => {
   const parent = { id: 'abc', pubkey: HEX_A, tags: [] };
   const tags = buildReplyTags(parent, HEX_A);
-  assert.deepEqual(tags, [['e', 'abc', '', 'root']]);
+  assert.deepEqual(tags, [['e', 'abc', '', 'root', HEX_A]]);
 });
 
 test('buildReplyTags: no myPubkey keeps all participants', () => {
   const parent = { id: 'abc', pubkey: HEX_A, tags: [] };
   const tags = buildReplyTags(parent);
-  assert.deepEqual(tags, [['e', 'abc', '', 'root'], ['p', HEX_A]]);
+  assert.deepEqual(tags, [['e', 'abc', '', 'root', HEX_A], ['p', HEX_A]]);
+});
+
+test('buildReplyTags: propagates root author pubkey from parent e tag', () => {
+  const parent = {
+    id: 'reply-id',
+    pubkey: HEX_B,
+    tags: [['e', 'root-id', '', 'root', HEX_C]],
+  };
+  const tags = buildReplyTags(parent, 'f'.repeat(64));
+  assert.equal(tags[0][4], HEX_C);
+  assert.equal(tags[1][4], HEX_B);
 });
 
 test('buildReplyTags: deduplicates participants already in parent p tags', () => {
@@ -147,4 +158,40 @@ test('buildMentionEvent: non-hex or short patterns are not replaced', () => {
   const result = buildMentionEvent('@notahex @tooshort');
   assert.equal(result.content, '@notahex @tooshort');
   assert.deepEqual(result.tags, []);
+});
+
+test('buildMentionEvent: event-ID mention produces e tag when id is in eventIds set', () => {
+  const result = buildMentionEvent(`quoting @${HEX_A}`, 0, new Set([HEX_A]));
+  assert.equal(result.content, 'quoting #[0]');
+  assert.deepEqual(result.tags, [['e', HEX_A]]);
+});
+
+test('buildMentionEvent: mixes p and e tags when some hexes are event IDs', () => {
+  const result = buildMentionEvent(`@${HEX_A} @${HEX_B}`, 0, new Set([HEX_B]));
+  assert.equal(result.content, '#[0] #[1]');
+  assert.deepEqual(result.tags, [['p', HEX_A], ['e', HEX_B]]);
+});
+
+test('buildMentionEvent: duplicate event-ID mention reuses same index', () => {
+  const result = buildMentionEvent(`@${HEX_A} and @${HEX_A}`, 0, new Set([HEX_A]));
+  assert.equal(result.content, '#[0] and #[0]');
+  assert.deepEqual(result.tags, [['e', HEX_A]]);
+});
+
+// ── buildQuoteTag ────────────────────────────────────────────────────────────
+
+test('buildQuoteTag: returns q tag with event id and pubkey', () => {
+  const quoted = { id: HEX_A, pubkey: HEX_B };
+  assert.deepEqual(buildQuoteTag(quoted), ['q', HEX_A, '', HEX_B]);
+});
+
+test('buildQuoteTag: uses empty relay hint by default', () => {
+  const quoted = { id: HEX_A, pubkey: HEX_B };
+  assert.equal(buildQuoteTag(quoted)[2], '');
+});
+
+test('buildQuoteTag: includes provided relay hint', () => {
+  const quoted = { id: HEX_A, pubkey: HEX_B };
+  const tag = buildQuoteTag(quoted, 'wss://relay.example.com');
+  assert.deepEqual(tag, ['q', HEX_A, 'wss://relay.example.com', HEX_B]);
 });
