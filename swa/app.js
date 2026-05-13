@@ -150,6 +150,8 @@ globalKindHandlers.set(0, (event, subId) => {
   if (subId === ownProfileSubId) populateProfileForm(event.pubkey);
 });
 
+globalKindHandlers.set(5, (event) => handleIncomingDeletion(event));
+
 kindHandlers.set(1040, (event) => handleAttestationEvent(event));
 
 kindHandlers.set(4, (event) => handleDmEvent(event));
@@ -842,7 +844,7 @@ function subscribeToFeed() {
   subscribeAll(feedSubId, [buildFeedFilter()]);
 }
 
-function buildFeedFilter(kinds = [1]) {
+function buildFeedFilter(kinds = [1, 5]) {
   const filter = { kinds, limit: 20 };
   if (feedActiveTab === 'following' && store.follows.length > 0) {
     filter.authors = store.follows.map(f => f.pubkey);
@@ -1262,6 +1264,19 @@ async function handleDeleteEvent(event) {
   await publishToAll(deletionEvent);
   store.removeEvent(event.id);
   store.removeMention(event.id);
+}
+
+function handleIncomingDeletion(deletionEvent) {
+  for (const tag of deletionEvent.tags) {
+    if (tag[0] !== 'e' || !tag[1]) continue;
+    const targetId = tag[1];
+    const stored = store.events.find(e => e.id === targetId)
+      || store.mentions.find(e => e.id === targetId);
+    if (stored && stored.pubkey === deletionEvent.pubkey) {
+      store.removeEvent(targetId);
+      store.removeMention(targetId);
+    }
+  }
 }
 
 async function createOwnEvent({ kind, tags, content }) {
