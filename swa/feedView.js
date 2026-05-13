@@ -3,6 +3,8 @@
 
 import { resolveReplyTag } from './threading.js';
 
+const OTS_TOOLS_URL = 'https://ots.tools/';
+
 function saveOnBlurOrEnter(input, fn) {
   input.addEventListener('blur', fn);
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') input.blur(); });
@@ -66,7 +68,7 @@ export function createOtsBadge() {
   badge.className = 'ots-badge';
   badge.textContent = '⏱ OTS';
   badge.title = 'OpenTimestamps attestation';
-  badge.href = 'https://ots.tools/';
+  badge.href = OTS_TOOLS_URL;
   badge.target = '_blank';
   badge.rel = 'noopener noreferrer';
   return badge;
