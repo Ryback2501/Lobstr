@@ -85,3 +85,21 @@ test('verifyIdentity: lowercases the local part when building the URL', async ()
   assert.ok(capturedUrl.includes('name=alice'));
   assert.ok(capturedUrl.includes('example.com'));
 });
+
+// ── NIP-05: _ wildcard (root identifier) ─────────────────────────────────────
+
+test('verifyIdentity: verifies _@domain root identifier', async () => {
+  const called = [];
+  const fetcher = makeFetcher(200, { names: { _: PUBKEY } });
+  await verifyIdentity(PUBKEY, '_@example.com', (...args) => called.push(args), fetcher);
+  assert.equal(called.length, 1);
+  assert.equal(called[0][0], PUBKEY);
+  assert.equal(called[0][1], '_@example.com');
+});
+
+test('verifyIdentity: uses _ as name query parameter for root identifier', async () => {
+  let capturedUrl = null;
+  const fetcher = async (url) => { capturedUrl = url; return { ok: false }; };
+  await verifyIdentity(PUBKEY, '_@example.com', () => {}, fetcher);
+  assert.ok(capturedUrl.includes('name=_'));
+});
