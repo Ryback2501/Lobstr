@@ -3,7 +3,7 @@
 
 import { resolveReplyTag } from './threading.js';
 
-const OTS_TOOLS_URL = 'https://ots.tools/';
+const OTS_VERIFY_URL = 'https://opentimestamps.org';
 
 function saveOnBlurOrEnter(input, fn) {
   input.addEventListener('blur', fn);
@@ -63,14 +63,24 @@ export function createVerifiedBadge(identifier) {
   return badge;
 }
 
-export function createOtsBadge() {
-  const badge = document.createElement('a');
+export function createOtsBadge(raw, eventId) {
+  const badge = document.createElement('button');
   badge.className = 'ots-badge';
   badge.textContent = '⏱ OTS';
-  badge.title = 'OpenTimestamps attestation';
-  badge.href = OTS_TOOLS_URL;
-  badge.target = '_blank';
-  badge.rel = 'noopener noreferrer';
+  badge.title = `OpenTimestamps attestation — click to download proof, then verify at ${OTS_VERIFY_URL}`;
+  badge.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const bytes = Uint8Array.from(atob(raw), c => c.charCodeAt(0));
+    const blob = new Blob([bytes], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${eventId.slice(0, 8)}.ots`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
   return badge;
 }
 
@@ -154,7 +164,7 @@ export function renderEvent(event, slice, callbacks) {
   metaLeft.className = 'event-meta-left';
   metaLeft.append(avatar, authorEl, time);
   if (verifiedIdentities.has(event.pubkey)) metaLeft.appendChild(createVerifiedBadge(verifiedIdentities.get(event.pubkey)));
-  if (attestations.has(event.id)) metaLeft.appendChild(createOtsBadge());
+  if (attestations.has(event.id)) metaLeft.appendChild(createOtsBadge(attestations.get(event.id).raw, event.id));
   meta.appendChild(metaLeft);
 
   if (!isOwnEvent(event, signer?.pubkeyHex)) {
