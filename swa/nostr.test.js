@@ -24,6 +24,10 @@ test('hexToBytes: throws on odd-length hex string', () => {
   assert.throws(() => hexToBytes('abc'), /Invalid hex/);
 });
 
+test('hexToBytes: throws on non-hex characters', () => {
+  assert.throws(() => hexToBytes('zz'), /Invalid hex/);
+});
+
 // ── NIP-01: importPrivkey ─────────────────────────────────────────────────────
 
 test('importPrivkey: accepts 64-char hex and derives pubkey', () => {

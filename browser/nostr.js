@@ -3,7 +3,7 @@ import { sha256 } from './vendor/sha256.mjs';
 import { bytesToHex, utf8ToBytes } from './vendor/utils.mjs';
 
 export function hexToBytes(hex) {
-  if (hex.length % 2 !== 0) throw new Error('Invalid hex string');
+  if (hex.length % 2 !== 0 || !/^[0-9a-fA-F]*$/.test(hex)) throw new Error('Invalid hex string');
   const bytes = new Uint8Array(hex.length / 2);
   for (let i = 0; i < bytes.length; i++) {
     bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
