@@ -266,6 +266,35 @@ test('clearEvents: empties events array and emits', () => {
   assert.equal(called.length, 1);
 });
 
+// ── setRelayInfo ──────────────────────────────────────────────────────────────
+
+test('setRelayInfo: stores relay info and emits relayInfo with url', () => {
+  const store = createStore(makeStorage(), makeStorage());
+  const fired = [];
+  store.on('relayInfo', (url) => fired.push(url));
+  const info = { name: 'Test Relay', supported_nips: [1, 11] };
+  store.setRelayInfo('wss://relay.example.com', info);
+  assert.deepEqual(store.relayInfos.get('wss://relay.example.com'), info);
+  assert.equal(fired[0], 'wss://relay.example.com');
+});
+
+test('setRelayInfo: overwrites existing info for the same url', () => {
+  const store = createStore(makeStorage(), makeStorage());
+  store.setRelayInfo('wss://relay.example.com', { name: 'Old' });
+  store.setRelayInfo('wss://relay.example.com', { name: 'New' });
+  assert.equal(store.relayInfos.get('wss://relay.example.com').name, 'New');
+  assert.equal(store.relayInfos.size, 1);
+});
+
+test('setRelayInfo: stores info independently per relay url', () => {
+  const store = createStore(makeStorage(), makeStorage());
+  store.setRelayInfo('wss://relay-a.example.com', { name: 'A' });
+  store.setRelayInfo('wss://relay-b.example.com', { name: 'B' });
+  assert.equal(store.relayInfos.size, 2);
+  assert.equal(store.relayInfos.get('wss://relay-a.example.com').name, 'A');
+  assert.equal(store.relayInfos.get('wss://relay-b.example.com').name, 'B');
+});
+
 // ── setAttestation ────────────────────────────────────────────────────────────
 
 test('setAttestation: stores and emits on first write', () => {
