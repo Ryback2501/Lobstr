@@ -163,6 +163,76 @@ header .subtitle {
   white-space: nowrap;
 }
 
+/* ── Relay info modal ── */
+
+.relay-modal-icon {
+  display: block;
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  object-fit: cover;
+  margin-bottom: 0.75rem;
+}
+
+.relay-modal-url {
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 0.72rem;
+  color: var(--muted);
+  word-break: break-all;
+  margin-top: 0.15rem;
+  margin-bottom: 0.85rem;
+}
+
+.relay-modal-description {
+  font-size: 0.875rem;
+  color: var(--muted);
+  line-height: 1.55;
+  margin-bottom: 0.85rem;
+}
+
+.relay-modal-section {
+  margin-top: 1rem;
+}
+
+.relay-modal-meta {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.3rem 0.75rem;
+  font-size: 0.8rem;
+}
+
+.relay-modal-meta dt {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.relay-modal-meta dd {
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 0.75rem;
+}
+
+.relay-modal-limits {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.25rem 0.75rem;
+  font-size: 0.8rem;
+}
+
+.relay-modal-limits dt {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.relay-modal-limits dd {
+  color: var(--text);
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 0.75rem;
+}
+
 main {
   max-width: 640px;
   margin: 0 auto;
@@ -363,6 +433,11 @@ details[open] > summary::before {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: pointer;
+}
+
+.relay-item-url:hover {
+  color: var(--text);
 }
 
 .btn-relay-toggle {

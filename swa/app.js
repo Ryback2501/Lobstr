@@ -94,6 +94,18 @@ const modalCloseBtn = document.getElementById('modal-close-btn');
 const modalVersion = document.getElementById('modal-version');
 const modalSpecsList = document.getElementById('modal-specs-list');
 
+const relayInfoModal = document.getElementById('relay-info-modal');
+const relayModalClose = document.getElementById('relay-modal-close');
+const relayModalIcon = document.getElementById('relay-modal-icon');
+const relayModalName = document.getElementById('relay-modal-name');
+const relayModalUrl = document.getElementById('relay-modal-url');
+const relayModalDescription = document.getElementById('relay-modal-description');
+const relayModalMeta = document.getElementById('relay-modal-meta');
+const relayModalNipsSection = document.getElementById('relay-modal-nips-section');
+const relayModalNips = document.getElementById('relay-modal-nips');
+const relayModalLimitsSection = document.getElementById('relay-modal-limits-section');
+const relayModalLimits = document.getElementById('relay-modal-limits');
+
 // ── State ─────────────────────────────────────────────────────────────────────
 
 const pool = new RelayPool({
@@ -155,7 +167,12 @@ for (const spec of SUPPORTED_SPECS) {
 infoBtn.addEventListener('click', () => { infoModal.hidden = false; });
 modalCloseBtn.addEventListener('click', () => { infoModal.hidden = true; });
 infoModal.addEventListener('click', (e) => { if (e.target === infoModal) infoModal.hidden = true; });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') infoModal.hidden = true; });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    infoModal.hidden = true;
+    relayInfoModal.hidden = true;
+  }
+});
 
 // ── Initialization ────────────────────────────────────────────────────────────
 
@@ -267,6 +284,11 @@ store.on('dmDecrypted', (eventId) => {
 store.on('eventRemoved', (eventId) => {
   eventsList.querySelector(`[data-event-id="${eventId}"]`)?.remove();
   mentionsList.querySelector(`[data-event-id="${eventId}"]`)?.remove();
+});
+
+store.on('relayInfo', (url) => {
+  rerenderRelayList();
+  if (url === currentRelayModalUrl) openRelayModal(url);
 });
 
 store.on('mentions', (events) => {
@@ -1049,8 +1071,10 @@ function rerenderRelayList() {
 
     const urlEl = document.createElement('span');
     urlEl.className = 'relay-item-url';
-    urlEl.textContent = url;
+    const relayName = store.relayInfos.get(url)?.name;
+    urlEl.textContent = relayName || url;
     urlEl.title = url;
+    urlEl.addEventListener('click', () => openRelayModal(url));
 
     const toggleBtn = document.createElement('button');
     toggleBtn.className = 'btn-relay-toggle';
@@ -1073,6 +1097,94 @@ function rerenderRelayList() {
     relayListEl.appendChild(item);
   }
 }
+
+let currentRelayModalUrl = null;
+
+function openRelayModal(url) {
+  currentRelayModalUrl = url;
+  const info = store.relayInfos.get(url);
+
+  relayModalName.textContent = info?.name || relayHostname(url);
+  relayModalUrl.textContent = url;
+
+  if (info?.icon) {
+    relayModalIcon.src = info.icon;
+    relayModalIcon.hidden = false;
+  } else {
+    relayModalIcon.hidden = true;
+  }
+
+  if (info?.description) {
+    relayModalDescription.textContent = info.description;
+    relayModalDescription.hidden = false;
+  } else {
+    relayModalDescription.hidden = true;
+  }
+
+  relayModalMeta.innerHTML = '';
+  const metaFields = [
+    ['Contact', info?.contact],
+    ['Admin key', info?.pubkey ? `${info.pubkey.slice(0, 16)}…` : null],
+    ['Software', info?.software ? (info.version ? `${info.software} ${info.version}` : info.software) : null],
+  ];
+  for (const [label, value] of metaFields) {
+    if (!value) continue;
+    const dt = document.createElement('dt');
+    dt.textContent = label;
+    const dd = document.createElement('dd');
+    dd.textContent = value;
+    dd.title = value;
+    relayModalMeta.append(dt, dd);
+  }
+
+  const nips = info?.supported_nips;
+  if (Array.isArray(nips) && nips.length) {
+    relayModalNips.innerHTML = '';
+    for (const n of nips) {
+      const badge = document.createElement('span');
+      badge.className = 'spec-badge';
+      badge.textContent = `NIP-${String(n).padStart(2, '0')}`;
+      relayModalNips.appendChild(badge);
+    }
+    relayModalNipsSection.hidden = false;
+  } else {
+    relayModalNipsSection.hidden = true;
+  }
+
+  const lim = info?.limitation;
+  if (lim && typeof lim === 'object') {
+    relayModalLimits.innerHTML = '';
+    const limitFields = [
+      ['Max message', lim.max_message_length != null ? `${lim.max_message_length} bytes` : null],
+      ['Max subscriptions', lim.max_subscriptions],
+      ['Max limit', lim.max_limit],
+      ['Default limit', lim.default_limit],
+      ['Max event tags', lim.max_event_tags],
+      ['Max content', lim.max_content_length != null ? `${lim.max_content_length} chars` : null],
+      ['Min PoW', lim.min_pow_difficulty],
+      ['Auth required', lim.auth_required != null ? (lim.auth_required ? 'yes' : 'no') : null],
+      ['Payment required', lim.payment_required != null ? (lim.payment_required ? 'yes' : 'no') : null],
+    ];
+    let shown = 0;
+    for (const [label, value] of limitFields) {
+      if (value == null) continue;
+      const dt = document.createElement('dt');
+      dt.textContent = label;
+      const dd = document.createElement('dd');
+      dd.textContent = value;
+      relayModalLimits.append(dt, dd);
+      shown++;
+    }
+    relayModalLimitsSection.hidden = shown === 0;
+  } else {
+    relayModalLimitsSection.hidden = true;
+  }
+
+  relayInfoModal.hidden = false;
+}
+
+relayModalClose.addEventListener('click', () => { relayInfoModal.hidden = true; });
+relayInfoModal.addEventListener('click', (e) => { if (e.target === relayInfoModal) relayInfoModal.hidden = true; });
 
 function rerenderFeed() {
   if (!store.events.length) return;
