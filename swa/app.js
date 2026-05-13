@@ -9,7 +9,7 @@ import { fetchRelayInfo } from './relayInfo.js';
 import { RelayPool } from './relayPool.js';
 import {
   renderEvent, renderReply, renderFollowItem,
-  getDisplayName, formatTime, createOtsBadge,
+  getDisplayName, formatTime, createOtsBadge, createVerifiedBadge,
 } from './feedView.js';
 const SUPPORTED_SPECS = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10'];
 
@@ -244,12 +244,14 @@ store.on('profiles', (pubkey) => {
   if (store.events.some(e => e.pubkey === pubkey) || store.mentions.some(e => e.pubkey === pubkey)) rerenderFeed();
   renderFollows(store.follows);
   rerenderDmConvList();
+  if (pubkey === currentDmContact) updateDmThreadTitle(pubkey);
 });
 
 store.on('verifiedIdentity', (pubkey) => {
   if (store.events.some(e => e.pubkey === pubkey) || store.mentions.some(e => e.pubkey === pubkey)) rerenderFeed();
   renderFollows(store.follows);
   rerenderDmConvList();
+  if (pubkey === currentDmContact) updateDmThreadTitle(pubkey);
 });
 
 store.on('attestation', (eventId) => {
@@ -944,25 +946,40 @@ function rerenderDmConvList() {
     const item = document.createElement('div');
     item.className = 'dm-conv-item' + (pubkey === currentDmContact ? ' active' : '');
 
+    const nameRow = document.createElement('div');
+    nameRow.className = 'dm-conv-name-row';
+
     const nameEl = document.createElement('span');
     nameEl.className = 'dm-conv-name';
     nameEl.textContent = displayName;
+    nameRow.appendChild(nameEl);
+    if (store.verifiedIdentities.has(pubkey)) {
+      nameRow.appendChild(createVerifiedBadge(store.verifiedIdentities.get(pubkey)));
+    }
 
     const previewEl = document.createElement('span');
     previewEl.className = 'dm-conv-preview';
     previewEl.textContent = preview.length > 50 ? preview.slice(0, 50) + '…' : preview;
 
-    item.append(nameEl, previewEl);
+    item.append(nameRow, previewEl);
     item.addEventListener('click', () => openDmThread(pubkey));
     dmConvsList.appendChild(item);
   }
 }
 
-function openDmThread(pubkey) {
-  currentDmContact = pubkey;
+function updateDmThreadTitle(pubkey) {
   const profile = store.profiles.get(pubkey);
   const displayName = getDisplayName(profile, pubkey.slice(0, 12) + '…');
-  dmThreadTitle.textContent = `Conversation with ${displayName}`;
+  dmThreadTitle.textContent = '';
+  dmThreadTitle.appendChild(document.createTextNode(`Conversation with ${displayName}`));
+  if (store.verifiedIdentities.has(pubkey)) {
+    dmThreadTitle.appendChild(createVerifiedBadge(store.verifiedIdentities.get(pubkey)));
+  }
+}
+
+function openDmThread(pubkey) {
+  currentDmContact = pubkey;
+  updateDmThreadTitle(pubkey);
   dmMessages.innerHTML = '';
   const myPubkey = store.signer?.pubkeyHex;
   const msgs = store.dms
