@@ -187,6 +187,10 @@ test('classifyEvent: kind 1 (text note) → regular', () => {
   assert.equal(classifyEvent({ kind: 1 }), 'regular');
 });
 
+test('classifyEvent: kind 2 (obsolete recommend-server) → regular', () => {
+  assert.equal(classifyEvent({ kind: 2 }), 'regular');
+});
+
 test('classifyEvent: kind 3 (follow list, NIP-02) → replaceable', () => {
   assert.equal(classifyEvent({ kind: 3 }), 'replaceable');
 });
