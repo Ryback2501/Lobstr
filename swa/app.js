@@ -4,7 +4,7 @@ import { store } from './store.js';
 import { LocalSigner, ExtensionSigner } from './signer.js';
 import { verifyIdentity } from './identityVerifier.js';
 import { VERSION } from './version.js';
-import { buildReplyTags, buildMentionEvent } from './threading.js';
+import { buildReplyTags, buildMentionEvent, buildQuoteTag } from './threading.js';
 import { fetchRelayInfo } from './relayInfo.js';
 import { RelayPool } from './relayPool.js';
 import {
@@ -1356,6 +1356,27 @@ function makeRenderCallbacks() {
       }
     },
     onDelete: handleDeleteEvent,
+    onScrollToParent: (eventId) => {
+      const card = eventsList.querySelector(`[data-event-id="${eventId}"]`);
+      if (!card) return;
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      card.classList.add('highlight');
+      setTimeout(() => card.classList.remove('highlight'), 1500);
+    },
+    onQuote: async (quotedEvent, comment) => {
+      if (!store.signer) throw new Error('Generate or import a keypair first.');
+      if (!isAnyConnected()) throw new Error('Connect to a relay first.');
+      const qTag = buildQuoteTag(quotedEvent);
+      const pTag = ['p', quotedEvent.pubkey];
+      const { content: transformedContent, tags: mentionTags } = buildMentionEvent(comment, 2);
+      const event = await createOwnEvent({
+        kind: 1,
+        tags: [qTag, pTag, ...mentionTags],
+        content: transformedContent,
+      });
+      await publishToAll(event);
+      store.addEvent(event);
+    },
   };
 }
 

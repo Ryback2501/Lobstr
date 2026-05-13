@@ -662,6 +662,25 @@ details[open] > summary::before {
   margin-bottom: 0.35rem;
 }
 
+.reply-indicator--link {
+  cursor: pointer;
+}
+
+.reply-indicator--link:hover {
+  color: var(--accent);
+}
+
+@keyframes highlight-fade {
+  0%   { outline-color: var(--accent); }
+  100% { outline-color: transparent; }
+}
+
+.event-card.highlight {
+  outline: 2px solid var(--accent);
+  border-radius: 8px;
+  animation: highlight-fade 1.5s ease-out forwards;
+}
+
 .event-actions {
   display: flex;
   margin-top: 0.5rem;
@@ -702,6 +721,15 @@ details[open] > summary::before {
 .reply-form-label {
   font-size: 0.78rem;
   color: var(--muted);
+}
+
+.quote-preview {
+  font-size: 0.78rem;
+  color: var(--muted);
+  border-left: 2px solid var(--border);
+  padding: 0.25rem 0.5rem;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .reply-form-actions {
