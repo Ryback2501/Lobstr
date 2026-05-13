@@ -7,7 +7,14 @@ export async function verifyIdentity(pubkey, identifier, onVerified, fetcher = f
   try {
     const url = new URL(`https://${domain}/.well-known/nostr.json`);
     url.searchParams.set('name', local);
-    const res = await fetcher(url.toString(), { signal: AbortSignal.timeout(5000) });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    let res;
+    try {
+      res = await fetcher(url.toString(), { signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
     if (!res.ok) return;
     const data = await res.json();
     if (typeof data?.names?.[local] === 'string' && data.names[local].toLowerCase() === pubkey.toLowerCase()) {

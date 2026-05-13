@@ -22,7 +22,6 @@ export class RelayConnection {
       };
 
       ws.onerror = (err) => {
-        this.onStatus('error');
         reject(err);
       };
 

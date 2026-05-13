@@ -61,7 +61,7 @@ export function validateMnemonic(mnemonic) {
   // Reconstruct and verify checksum
   let bits = words.map(w => wordMap.get(w).toString(2).padStart(11, '0')).join('');
   const totalBits = words.length * 11;
-  const checksumBits = totalBits % 32 || 32; // always ENT/32 = MS/3
+  const checksumBits = words.length / 3;
   const entropyBits = bits.slice(0, totalBits - checksumBits);
   const givenChecksum = parseInt(bits.slice(totalBits - checksumBits), 2);
 

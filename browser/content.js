@@ -144,6 +144,7 @@ function showPermissionModal({ requestId, origin, method, displayParams }) {
   // ── Respond helpers ────────────────────────────────────────────────────────
 
   function respond(approved) {
+    document.removeEventListener('keydown', onKeyDown);
     host.remove();
     const remember = shadow.getElementById('remember').checked;
     chrome.runtime.sendMessage({ type: 'CONFIRM_RESPONSE', requestId, approved, remember, origin });
@@ -159,7 +160,7 @@ function showPermissionModal({ requestId, origin, method, displayParams }) {
 
   // Escape key denies
   function onKeyDown(e) {
-    if (e.key === 'Escape') { document.removeEventListener('keydown', onKeyDown); respond(false); }
+    if (e.key === 'Escape') respond(false);
   }
   document.addEventListener('keydown', onKeyDown);
 }

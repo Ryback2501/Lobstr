@@ -109,6 +109,16 @@ test('connect: noop if already connected', () => {
   assert.equal(Mock.instances.length, 1);
 });
 
+test('connect: noop if already connecting', () => {
+  const Mock = makeConnectionClass();
+  const pool = new RelayPool({ connectionClass: Mock });
+  pool.add('wss://a.example');
+  pool.connect('wss://a.example');
+  Mock.instances[0].fireStatus('connecting');
+  pool.connect('wss://a.example'); // second call while connecting
+  assert.equal(Mock.instances.length, 1); // only one connection created
+});
+
 test('disconnect: calls conn.disconnect and nulls conn', () => {
   const Mock = makeConnectionClass();
   const pool = new RelayPool({ connectionClass: Mock });
