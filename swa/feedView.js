@@ -133,11 +133,11 @@ export function createAvatar(profile, displayName, pubkey) {
  * Renders a feed event card.
  * @param {object} event - The Nostr event.
  * @param {object} slice - { signer, profiles, verifiedIdentities, attestations, followedPubkeys, events }
- * @param {object} callbacks - { onFollow, onReply, onShowReplies, onDelete, onScrollToParent }
+ * @param {object} callbacks - { onFollow, onReply, onShowReplies, onDelete, onScrollToParent, onQuote }
  */
 export function renderEvent(event, slice, callbacks) {
   const { signer, profiles, verifiedIdentities, attestations, followedPubkeys, events } = slice;
-  const { onFollow, onReply, onShowReplies, onDelete, onScrollToParent } = callbacks;
+  const { onFollow, onReply, onShowReplies, onDelete, onScrollToParent, onQuote } = callbacks;
 
   const card = document.createElement('div');
   card.className = 'event-card';
@@ -208,7 +208,11 @@ export function renderEvent(event, slice, callbacks) {
   showRepliesBtn.className = 'btn-reply';
   showRepliesBtn.textContent = 'Show replies';
 
-  actions.append(replyBtn, showRepliesBtn);
+  const quoteBtn = document.createElement('button');
+  quoteBtn.className = 'btn-reply';
+  quoteBtn.textContent = 'Quote';
+
+  actions.append(replyBtn, showRepliesBtn, quoteBtn);
 
   if (isOwnEvent(event, signer?.pubkeyHex)) {
     const deleteBtn = document.createElement('button');
@@ -231,6 +235,9 @@ export function renderEvent(event, slice, callbacks) {
   const replyForm = createReplyForm(event, displayName, onReply);
   card.appendChild(replyForm);
 
+  const quoteForm = createQuoteForm(event, onQuote);
+  card.appendChild(quoteForm);
+
   const repliesContainer = document.createElement('div');
   repliesContainer.className = 'replies-container';
   repliesContainer.hidden = true;
@@ -238,7 +245,14 @@ export function renderEvent(event, slice, callbacks) {
 
   replyBtn.addEventListener('click', () => {
     replyForm.hidden = !replyForm.hidden;
+    quoteForm.hidden = true;
     if (!replyForm.hidden) replyForm.querySelector('textarea').focus();
+  });
+
+  quoteBtn.addEventListener('click', () => {
+    quoteForm.hidden = !quoteForm.hidden;
+    replyForm.hidden = true;
+    if (!quoteForm.hidden) quoteForm.querySelector('textarea').focus();
   });
 
   showRepliesBtn.addEventListener('click', () => {
@@ -293,6 +307,67 @@ function createReplyForm(parentEvent, displayName, onReply) {
 
     try {
       await onReply(parentEvent, content);
+      textarea.value = '';
+      form.hidden = true;
+      resultMsg.textContent = '';
+    } catch (err) {
+      resultMsg.textContent = err.message;
+      resultMsg.className = 'result-msg err';
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+
+  return form;
+}
+
+function createQuoteForm(quotedEvent, onQuote) {
+  const form = document.createElement('div');
+  form.className = 'reply-form';
+  form.hidden = true;
+
+  const label = document.createElement('div');
+  label.className = 'reply-form-label';
+  label.textContent = 'Quoting this post';
+
+  const preview = document.createElement('div');
+  preview.className = 'quote-preview';
+  const trimmed = quotedEvent.content.trim();
+  preview.textContent = trimmed.length > 120 ? trimmed.slice(0, 120) + '…' : trimmed;
+
+  const textarea = document.createElement('textarea');
+  textarea.rows = 3;
+  textarea.placeholder = 'Add your comment…';
+
+  const formActions = document.createElement('div');
+  formActions.className = 'reply-form-actions';
+
+  const submitBtn = document.createElement('button');
+  submitBtn.className = 'primary';
+  submitBtn.textContent = 'Quote';
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.textContent = 'Cancel';
+
+  const resultMsg = document.createElement('span');
+  resultMsg.className = 'result-msg';
+
+  formActions.append(submitBtn, cancelBtn, resultMsg);
+  form.append(label, preview, textarea, formActions);
+
+  cancelBtn.addEventListener('click', () => {
+    form.hidden = true;
+    textarea.value = '';
+    resultMsg.textContent = '';
+  });
+
+  submitBtn.addEventListener('click', async () => {
+    submitBtn.disabled = true;
+    resultMsg.textContent = 'Posting…';
+    resultMsg.className = 'result-msg';
+
+    try {
+      await onQuote(quotedEvent, textarea.value.trim());
       textarea.value = '';
       form.hidden = true;
       resultMsg.textContent = '';

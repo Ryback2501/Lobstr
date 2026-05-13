@@ -723,6 +723,15 @@ details[open] > summary::before {
   color: var(--muted);
 }
 
+.quote-preview {
+  font-size: 0.78rem;
+  color: var(--muted);
+  border-left: 2px solid var(--border);
+  padding: 0.25rem 0.5rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .reply-form-actions {
   display: flex;
   align-items: center;
