@@ -93,7 +93,27 @@ header .subtitle {
   padding: 1.75rem;
   width: 100%;
   max-width: 420px;
+  max-height: calc(100vh - 2rem);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   position: relative;
+}
+
+.modal > * {
+  flex-shrink: 0;
+}
+
+.modal-nips-section {
+  flex-shrink: 1;
+  min-height: 5rem;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modal-nips-section > .modal-specs-label {
+  flex-shrink: 0;
 }
 
 .modal-close {
@@ -145,14 +165,13 @@ header .subtitle {
 
 .specs-list {
   display: flex;
-  flex-direction: row;
+  flex-wrap: wrap;
   gap: 0.5rem;
-  overflow-x: auto;
-  padding-bottom: 0.25rem;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .spec-badge {
-  flex-shrink: 0;
   background: var(--surface2);
   border: 1px solid var(--border);
   border-radius: 6px;
