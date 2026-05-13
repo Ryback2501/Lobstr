@@ -133,11 +133,11 @@ export function createAvatar(profile, displayName, pubkey) {
  * Renders a feed event card.
  * @param {object} event - The Nostr event.
  * @param {object} slice - { signer, profiles, verifiedIdentities, attestations, followedPubkeys, events }
- * @param {object} callbacks - { onFollow, onReply, onShowReplies, onDelete }
+ * @param {object} callbacks - { onFollow, onReply, onShowReplies, onDelete, onScrollToParent }
  */
 export function renderEvent(event, slice, callbacks) {
   const { signer, profiles, verifiedIdentities, attestations, followedPubkeys, events } = slice;
-  const { onFollow, onReply, onShowReplies, onDelete } = callbacks;
+  const { onFollow, onReply, onShowReplies, onDelete, onScrollToParent } = callbacks;
 
   const card = document.createElement('div');
   card.className = 'event-card';
@@ -179,9 +179,15 @@ export function renderEvent(event, slice, callbacks) {
 
   const refLabel = getReplyLabel(event, { events, profiles });
   if (refLabel !== null) {
+    const eTags = event.tags.filter(t => t[0] === 'e');
+    const parentId = eTags.length > 0 ? resolveReplyTag(eTags)?.[1] : null;
     const replyIndicator = document.createElement('div');
     replyIndicator.className = 'reply-indicator';
     replyIndicator.textContent = `↩ ${refLabel}`;
+    if (parentId && onScrollToParent) {
+      replyIndicator.classList.add('reply-indicator--link');
+      replyIndicator.addEventListener('click', () => onScrollToParent(parentId));
+    }
     card.append(meta, replyIndicator);
   } else {
     card.appendChild(meta);
