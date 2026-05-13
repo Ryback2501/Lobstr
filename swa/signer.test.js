@@ -171,3 +171,57 @@ test('ExtensionSigner: decrypt throws when nip04 is not available', async () => 
   await ext.init();
   await assert.rejects(() => ext.decrypt(BOB_PUB, 'ct'), /not supported/i);
 });
+
+// ── NIP-07: nip44 ─────────────────────────────────────────────────────────────
+
+test('LocalSigner: nip44Encrypt throws not available', async () => {
+  const signer = new LocalSigner({ privkeyHex: ALICE_PRIV, pubkeyHex: ALICE_PUB });
+  await assert.rejects(() => signer.nip44Encrypt(BOB_PUB, 'hello'), /not available/i);
+});
+
+test('LocalSigner: nip44Decrypt throws not available', async () => {
+  const signer = new LocalSigner({ privkeyHex: ALICE_PRIV, pubkeyHex: ALICE_PUB });
+  await assert.rejects(() => signer.nip44Decrypt(BOB_PUB, 'ct'), /not available/i);
+});
+
+test('ExtensionSigner: nip44Encrypt delegates to nostr.nip44.encrypt', async () => {
+  const calls = [];
+  const mockNostr = {
+    getPublicKey: async () => ALICE_PUB,
+    nip44: { encrypt: async (pub, pt) => { calls.push({ pub, pt }); return 'nip44-cipher'; } },
+  };
+  const ext = new ExtensionSigner(mockNostr);
+  await ext.init();
+  const result = await ext.nip44Encrypt(BOB_PUB, 'hello');
+  assert.equal(result, 'nip44-cipher');
+  assert.equal(calls[0].pub, BOB_PUB);
+  assert.equal(calls[0].pt, 'hello');
+});
+
+test('ExtensionSigner: nip44Decrypt delegates to nostr.nip44.decrypt', async () => {
+  const calls = [];
+  const mockNostr = {
+    getPublicKey: async () => ALICE_PUB,
+    nip44: { decrypt: async (pub, ct) => { calls.push({ pub, ct }); return 'plaintext'; } },
+  };
+  const ext = new ExtensionSigner(mockNostr);
+  await ext.init();
+  const result = await ext.nip44Decrypt(BOB_PUB, 'ciphertext');
+  assert.equal(result, 'plaintext');
+  assert.equal(calls[0].pub, BOB_PUB);
+  assert.equal(calls[0].ct, 'ciphertext');
+});
+
+test('ExtensionSigner: nip44Encrypt throws when nip44 is not available', async () => {
+  const mockNostr = { getPublicKey: async () => ALICE_PUB };
+  const ext = new ExtensionSigner(mockNostr);
+  await ext.init();
+  await assert.rejects(() => ext.nip44Encrypt(BOB_PUB, 'hello'), /not supported/i);
+});
+
+test('ExtensionSigner: nip44Decrypt throws when nip44 is not available', async () => {
+  const mockNostr = { getPublicKey: async () => ALICE_PUB };
+  const ext = new ExtensionSigner(mockNostr);
+  await ext.init();
+  await assert.rejects(() => ext.nip44Decrypt(BOB_PUB, 'ct'), /not supported/i);
+});

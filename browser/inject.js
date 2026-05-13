@@ -43,5 +43,9 @@
       encrypt: (pubkey, plaintext)         => call('nip04.encrypt',   [pubkey, plaintext]),
       decrypt: (pubkey, ciphertext)        => call('nip04.decrypt',   [pubkey, ciphertext]),
     },
+    nip44: {
+      encrypt: (pubkey, plaintext)         => call('nip44.encrypt',   [pubkey, plaintext]),
+      decrypt: (pubkey, ciphertext)        => call('nip44.decrypt',   [pubkey, ciphertext]),
+    },
   };
 })();
