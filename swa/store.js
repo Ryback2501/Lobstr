@@ -138,6 +138,13 @@ export function createStore(ls, ss) {
       emit('events', this.events);
     },
 
+    relayInfos: new Map(),
+
+    setRelayInfo(url, info) {
+      this.relayInfos.set(url, info);
+      emit('relayInfo', url);
+    },
+
     attestations: new Map(),
 
     setAttestation(eventId, raw) {
