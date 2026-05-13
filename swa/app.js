@@ -5,6 +5,7 @@ import { LocalSigner, ExtensionSigner } from './signer.js';
 import { verifyIdentity } from './identityVerifier.js';
 import { VERSION } from './version.js';
 import { buildReplyTags, buildMentionEvent } from './threading.js';
+import { fetchRelayInfo } from './relayInfo.js';
 import { RelayPool } from './relayPool.js';
 import {
   renderEvent, renderReply, renderFollowItem,
@@ -511,6 +512,7 @@ function connectRelay(url) {
   const connected = store.connectedRelayUrls;
   connected.add(url);
   store.setConnectedRelayUrls(connected);
+  fetchRelayInfo(url).then(info => store.setRelayInfo(url, info)).catch(() => {});
 }
 
 function disconnectRelay(url) {
