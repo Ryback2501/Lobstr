@@ -203,6 +203,57 @@ test('removeEvent: noop for unknown id', () => {
   store.removeEvent('z'.repeat(64));
 });
 
+// ── removeAddressableEvent ────────────────────────────────────────────────────
+
+test('removeAddressableEvent: removes matching addressable event and emits eventRemoved', () => {
+  const store = createStore(makeStorage(), makeStorage());
+  const removed = [];
+  store.on('eventRemoved', (id) => removed.push(id));
+  const e = makeEvent({ kind: 30023, tags: [['d', 'my-article']] });
+  store.addEvent(e);
+  store.removeAddressableEvent(30023, e.pubkey, 'my-article');
+  assert.equal(store.events.length, 0);
+  assert.equal(removed[0], e.id);
+});
+
+test('removeAddressableEvent: noop when kind does not match', () => {
+  const store = createStore(makeStorage(), makeStorage());
+  store.on('eventRemoved', () => { throw new Error('should not fire'); });
+  const e = makeEvent({ kind: 30023, tags: [['d', 'slug']] });
+  store.addEvent(e);
+  store.removeAddressableEvent(30024, e.pubkey, 'slug');
+  assert.equal(store.events.length, 1);
+});
+
+test('removeAddressableEvent: noop when pubkey does not match', () => {
+  const store = createStore(makeStorage(), makeStorage());
+  store.on('eventRemoved', () => { throw new Error('should not fire'); });
+  const e = makeEvent({ kind: 30023, pubkey: 'a'.repeat(64), tags: [['d', 'slug']] });
+  store.addEvent(e);
+  store.removeAddressableEvent(30023, 'b'.repeat(64), 'slug');
+  assert.equal(store.events.length, 1);
+});
+
+test('removeAddressableEvent: noop when d-tag value does not match', () => {
+  const store = createStore(makeStorage(), makeStorage());
+  store.on('eventRemoved', () => { throw new Error('should not fire'); });
+  const e = makeEvent({ kind: 30023, tags: [['d', 'slug-a']] });
+  store.addEvent(e);
+  store.removeAddressableEvent(30023, e.pubkey, 'slug-b');
+  assert.equal(store.events.length, 1);
+});
+
+test('removeAddressableEvent: matches event with empty d-tag when called with empty string', () => {
+  const store = createStore(makeStorage(), makeStorage());
+  const removed = [];
+  store.on('eventRemoved', (id) => removed.push(id));
+  const e = makeEvent({ kind: 30000, tags: [] });
+  store.addEvent(e);
+  store.removeAddressableEvent(30000, e.pubkey, '');
+  assert.equal(store.events.length, 0);
+  assert.equal(removed[0], e.id);
+});
+
 // ── clearEvents ───────────────────────────────────────────────────────────────
 
 test('clearEvents: empties events array and emits', () => {

@@ -122,6 +122,17 @@ export function createStore(ls, ss) {
       emit('eventRemoved', eventId);
     },
 
+    removeAddressableEvent(kind, pubkey, dTagValue) {
+      const idx = this.events.findIndex(e =>
+        e.kind === kind &&
+        e.pubkey === pubkey &&
+        (e.tags.find(t => t[0] === 'd')?.[1] ?? '') === dTagValue,
+      );
+      if (idx === -1) return;
+      const [removed] = this.events.splice(idx, 1);
+      emit('eventRemoved', removed.id);
+    },
+
     clearEvents() {
       this.events = [];
       emit('events', this.events);
