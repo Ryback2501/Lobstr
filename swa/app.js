@@ -7,6 +7,7 @@ import { VERSION } from './version.js';
 import { buildReplyTags, buildMentionEvent, buildQuoteTag } from './threading.js';
 import { fetchRelayInfo } from './relayInfo.js';
 import { RelayPool } from './relayPool.js';
+import { getDmContact, aggregateDmContacts } from './dms.js';
 import {
   renderEvent, renderReply, renderFollowItem,
   getDisplayName, formatTime, createOtsBadge, renderIdentityBadge,
@@ -966,13 +967,6 @@ function subscribeAttestations() {
 
 // ── Direct Messages ───────────────────────────────────────────────────────────
 
-function getDmContact(event, myPubkey) {
-  if (!myPubkey) return null;
-  return event.pubkey === myPubkey
-    ? (event.tags.find(t => t[0] === 'p')?.[1] ?? null)
-    : event.pubkey;
-}
-
 function handleDmEvent(event) {
   if (!store.signer) return;
   const myPubkey = store.signer.pubkeyHex;
@@ -998,16 +992,8 @@ function rerenderDmConvList() {
   if (!store.signer) return;
   dmConvsList.innerHTML = '';
   const myPubkey = store.signer.pubkeyHex;
-  const contacts = new Map(); // pubkey → latest event
-  for (const event of store.dms) {
-    const contact = getDmContact(event, myPubkey);
-    if (!contact) continue;
-    if (!contacts.has(contact) || event.created_at > contacts.get(contact).created_at) {
-      contacts.set(contact, event);
-    }
-  }
-  if (contacts.size === 0) return;
-  const sorted = [...contacts.entries()].sort((a, b) => b[1].created_at - a[1].created_at);
+  const sorted = aggregateDmContacts(store.dms, myPubkey);
+  if (sorted.length === 0) return;
   for (const [pubkey, latestEvent] of sorted) {
     const profile = store.profiles.get(pubkey);
     const displayName = getDisplayName(profile, pubkey.slice(0, 12) + '…');
