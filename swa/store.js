@@ -137,6 +137,11 @@ export function createStore(ls, ss) {
       emit('relayInfo', url);
     },
 
+    clearRelayInfos() {
+      this.relayInfos = new Map();
+      emit('relayInfosCleared');
+    },
+
     attestations: new Map(),
 
     setAttestation(eventId, raw) {
@@ -152,11 +157,21 @@ export function createStore(ls, ss) {
       emit('verifiedIdentity', pubkey);
     },
 
+    clearVerifiedIdentities() {
+      this.verifiedIdentities = new Map();
+      emit('verifiedIdentitiesCleared');
+    },
+
     profiles: new Map(),
 
     setProfile(pubkey, metadata) {
       this.profiles.set(pubkey, metadata);
       emit('profiles', pubkey);
+    },
+
+    clearProfiles() {
+      this.profiles = new Map();
+      emit('profilesCleared');
     },
 
     mentions: [],

@@ -470,6 +470,9 @@ logoutBtn.addEventListener('click', () => {
 
   store.clearEvents();
   store.clearMentions();
+  store.clearProfiles();
+  store.clearVerifiedIdentities();
+  store.clearRelayInfos();
   store.setFollows([]);
 
   dmConvsList.innerHTML = '';
