@@ -823,6 +823,9 @@ function setupSubscriptions() {
   subIdHandlers.clear();
   subIdEOSEHandlers.clear();
   subIdClosedHandlers.clear();
+  replySubscriptions.clear();
+  replySubIdToContainer.clear();
+  replyEventIds.clear();
   ownProfileSubId = null;
   followsSubId = null;
   feedSubId = null;
