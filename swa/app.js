@@ -1313,6 +1313,7 @@ function updateIdentityUI() {
   const hasKeys = !!store.signer;
   const isExtension = store.signer instanceof ExtensionSigner;
   loginModal.hidden = hasKeys;
+  document.body.classList.toggle('login-modal-open', !hasKeys);
   securitySection.hidden = !hasKeys;
   extensionBadge.hidden = !isExtension;
   extensionError.hidden = true;
