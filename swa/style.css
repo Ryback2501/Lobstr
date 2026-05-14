@@ -104,6 +104,29 @@ header .subtitle {
   flex-shrink: 0;
 }
 
+.login-modal-card {
+  max-width: 480px;
+  overflow-y: auto;
+  gap: 0;
+}
+
+.login-section + .login-section {
+  border-top: 1px solid var(--border);
+  padding-top: 1rem;
+}
+
+.login-section h3 {
+  margin: 0 0 0.75rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.login-section {
+  padding-bottom: 1rem;
+}
+
 .modal-nips-section {
   flex-shrink: 1;
   min-height: 5rem;

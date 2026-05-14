@@ -15,6 +15,46 @@
     <button id="info-btn" class="info-btn" aria-label="About">i</button>
   </header>
 
+  <div id="login-modal" class="modal-overlay">
+    <div class="modal login-modal-card" role="dialog" aria-modal="true" aria-label="Login">
+      <h2>Lobstr</h2>
+
+      <section class="login-section">
+        <h3>Login</h3>
+        <div class="input-row">
+          <input id="privkey-import" type="password" placeholder="64-char hex private key" autocomplete="off">
+          <button id="import-btn">Login</button>
+        </div>
+        <div id="import-error" class="error-msg" hidden></div>
+        <div class="field-group" style="margin-top: 0.75rem;">
+          <textarea id="mnemonic-import" rows="2" placeholder="Enter 12 or 24 words separated by spaces"></textarea>
+          <div id="mnemonic-error" class="error-msg" hidden></div>
+          <div class="btn-row">
+            <button id="mnemonic-import-btn">Import from mnemonic</button>
+          </div>
+        </div>
+        <div style="margin-top: 0.75rem;">
+          <button id="extension-login-btn">Login with extension</button>
+          <div id="extension-error" class="error-msg" hidden></div>
+        </div>
+      </section>
+
+      <section class="login-section">
+        <h3>Create identity</h3>
+        <div class="btn-row">
+          <button id="generate-btn" class="primary">Generate new keypair</button>
+        </div>
+        <div class="btn-row" style="margin-top: 0.5rem;">
+          <select id="mnemonic-strength">
+            <option value="128">12 words</option>
+            <option value="256">24 words</option>
+          </select>
+          <button id="generate-mnemonic-btn">Generate from mnemonic</button>
+        </div>
+      </section>
+    </div>
+  </div>
+
   <div id="info-modal" class="modal-overlay" hidden>
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
       <button id="modal-close-btn" class="modal-close" aria-label="Close">&times;</button>
@@ -59,61 +99,31 @@
         </div>
       </div>
 
-      <div id="extension-section" class="field-group" style="margin-top: 0.75rem;">
-        <button id="extension-login-btn">Login with extension</button>
-        <div id="extension-error" class="error-msg" hidden></div>
-        <div id="extension-badge" class="extension-badge" hidden>Connected via browser extension</div>
-      </div>
+      <div id="extension-badge" class="extension-badge" hidden>Connected via browser extension</div>
 
-      <details id="privkey-section">
-        <summary>Private key</summary>
+      <details id="security-section" hidden>
+        <summary>Private key &amp; seed phrase</summary>
         <div class="field-group" style="margin-top: 0.75rem;">
           <div class="warning-label">Never share your private key with anyone.</div>
           <div id="privkey-display-wrapper" hidden>
-            <label>Generated private key (copy and store it safely)</label>
+            <label>Private key</label>
             <div class="input-row">
               <input id="privkey-display" type="text" readonly autocomplete="off">
               <button id="copy-privkey-btn">Copy</button>
             </div>
           </div>
-          <div class="input-row" style="margin-top: 0.5rem;">
-            <input id="privkey-import" type="password" placeholder="Paste 64-char hex private key" autocomplete="off">
-            <button id="import-btn">Import</button>
-          </div>
-          <div id="import-error" class="error-msg" hidden></div>
-        </div>
-      </details>
-
-      <details id="mnemonic-section">
-        <summary>Mnemonic seed phrase</summary>
-        <div class="field-group" style="margin-top: 0.75rem;">
           <div id="mnemonic-display-wrapper" hidden>
-            <div class="warning-label">Write down these 12 words and keep them safe. They cannot be recovered.</div>
+            <label>Seed phrase</label>
             <div id="mnemonic-display" class="mnemonic-display"></div>
             <div class="btn-row" style="margin-top: 0.5rem;">
               <button id="copy-mnemonic-btn">Copy words</button>
             </div>
           </div>
-          <label style="margin-top: 0.5rem;">Import from mnemonic</label>
-          <textarea id="mnemonic-import" rows="2" placeholder="Enter 12 or 24 words separated by spaces"></textarea>
-          <div id="mnemonic-error" class="error-msg" hidden></div>
-          <div class="btn-row">
-            <button id="mnemonic-import-btn">Import mnemonic</button>
+          <div class="btn-row" style="margin-top: 0.75rem;">
+            <button id="logout-btn">Logout</button>
           </div>
         </div>
       </details>
-
-      <div class="btn-row" id="local-key-btn-row">
-        <button id="generate-btn" class="primary">Generate new keypair</button>
-        <select id="mnemonic-strength">
-          <option value="128">12 words</option>
-          <option value="256">24 words</option>
-        </select>
-        <button id="generate-mnemonic-btn">Generate from mnemonic</button>
-      </div>
-      <div class="btn-row" style="margin-top: 0.25rem;">
-        <button id="logout-btn" hidden>Logout</button>
-      </div>
     </section>
 
     <section id="profile-panel" class="panel">
