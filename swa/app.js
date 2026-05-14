@@ -78,6 +78,7 @@ const dmThread = document.getElementById('dm-thread');
 const dmThreadTitle = document.getElementById('dm-thread-title');
 const dmMessages = document.getElementById('dm-messages');
 const dmCompose = document.getElementById('dm-compose');
+const dmCharCount = document.getElementById('dm-char-count');
 const dmSendBtn = document.getElementById('dm-send-btn');
 const dmResult = document.getElementById('dm-result');
 
@@ -1081,6 +1082,8 @@ dmOpenBtn.addEventListener('click', () => {
 
 dmRecipientInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') dmOpenBtn.click(); });
 
+dmCompose.addEventListener('input', () => { dmCharCount.textContent = dmCompose.value.length; });
+
 dmSendBtn.addEventListener('click', async () => {
   if (!requireKeysAndRelay((msg) => setResult(dmResult, msg, 'err'))) return;
   if (!currentDmContact) {
@@ -1099,6 +1102,7 @@ dmSendBtn.addEventListener('click', async () => {
     await publishToAll(event);
     store.addDm(event);
     dmCompose.value = '';
+    dmCharCount.textContent = '0';
     setResult(dmResult, '', '');
   } catch (err) {
     setResult(dmResult, err.message, 'err');
