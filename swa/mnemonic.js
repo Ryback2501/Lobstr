@@ -1,9 +1,3 @@
-/**
- * Mnemonic key derivation
- * BIP-39 mnemonic generation/validation + BIP-32 HD derivation
- * Derivation path: m/44'/1237'/0'/0/0  (Nostr coin type 1237)
- */
-
 import { wordlist } from './vendor/bip39-wordlist.js';
 import { sha256 } from './vendor/sha256.mjs';
 import { bytesToHex } from './vendor/utils.mjs';

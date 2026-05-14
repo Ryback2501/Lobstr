@@ -184,6 +184,48 @@ test('addEvent: keeps stored addressable event when timestamps tie and stored id
   assert.equal(store.events[0].id, 'a'.repeat(64));
 });
 
+// ── on / emit ─────────────────────────────────────────────────────────────────
+
+test('on: multiple listeners fire in registration order', () => {
+  const store = createStore(makeStorage(), makeStorage());
+  const calls = [];
+  store.on('events', () => calls.push('first'));
+  store.on('events', () => calls.push('second'));
+  store.clearEvents();
+  assert.deepEqual(calls, ['first', 'second']);
+});
+
+test('on: listeners are isolated per event name', () => {
+  const store = createStore(makeStorage(), makeStorage());
+  const eventsCalls = [];
+  const mentionsCalls = [];
+  store.on('events', () => eventsCalls.push(1));
+  store.on('mentions', () => mentionsCalls.push(1));
+  store.clearEvents();
+  assert.equal(eventsCalls.length, 1);
+  assert.equal(mentionsCalls.length, 0);
+});
+
+test('on: emitting with no listeners does not throw', () => {
+  const store = createStore(makeStorage(), makeStorage());
+  assert.doesNotThrow(() => store.clearEvents());
+});
+
+test('emit: a throwing listener does not block subsequent listeners', () => {
+  const store = createStore(makeStorage(), makeStorage());
+  const calls = [];
+  const originalError = console.error;
+  console.error = () => {};
+  try {
+    store.on('events', () => { throw new Error('boom'); });
+    store.on('events', () => calls.push('survived'));
+    store.clearEvents();
+  } finally {
+    console.error = originalError;
+  }
+  assert.deepEqual(calls, ['survived']);
+});
+
 // ── removeEvent ───────────────────────────────────────────────────────────────
 
 test('removeEvent: removes by id and emits eventRemoved', () => {
@@ -316,6 +358,62 @@ test('setAttestation: first write wins, subsequent ignored', () => {
   assert.equal(fired.length, 1);
 });
 
+// ── setVerifiedIdentity ───────────────────────────────────────────────────────
+
+test('setVerifiedIdentity: stores identifier and emits with pubkey', () => {
+  const store = createStore(makeStorage(), makeStorage());
+  const fired = [];
+  store.on('verifiedIdentity', (pk) => fired.push(pk));
+  store.setVerifiedIdentity('a'.repeat(64), 'alice@example.com');
+  assert.equal(store.verifiedIdentities.get('a'.repeat(64)), 'alice@example.com');
+  assert.equal(fired[0], 'a'.repeat(64));
+});
+
+test('setVerifiedIdentity: overwrites previous identifier for same pubkey', () => {
+  const store = createStore(makeStorage(), makeStorage());
+  store.setVerifiedIdentity('a'.repeat(64), 'old@example.com');
+  store.setVerifiedIdentity('a'.repeat(64), 'new@example.com');
+  assert.equal(store.verifiedIdentities.get('a'.repeat(64)), 'new@example.com');
+});
+
+test('clearVerifiedIdentities: empties map and emits', () => {
+  const store = createStore(makeStorage(), makeStorage());
+  const fired = [];
+  store.on('verifiedIdentitiesCleared', () => fired.push(1));
+  store.setVerifiedIdentity('a'.repeat(64), 'alice@example.com');
+  store.clearVerifiedIdentities();
+  assert.equal(store.verifiedIdentities.size, 0);
+  assert.equal(fired.length, 1);
+});
+
+// ── setProfile ────────────────────────────────────────────────────────────────
+
+test('setProfile: stores metadata and emits profiles with pubkey', () => {
+  const store = createStore(makeStorage(), makeStorage());
+  const fired = [];
+  store.on('profiles', (pk) => fired.push(pk));
+  store.setProfile('a'.repeat(64), { name: 'Alice' });
+  assert.equal(store.profiles.get('a'.repeat(64)).name, 'Alice');
+  assert.equal(fired[0], 'a'.repeat(64));
+});
+
+test('setProfile: overwrites existing metadata', () => {
+  const store = createStore(makeStorage(), makeStorage());
+  store.setProfile('a'.repeat(64), { name: 'Old' });
+  store.setProfile('a'.repeat(64), { name: 'New' });
+  assert.equal(store.profiles.get('a'.repeat(64)).name, 'New');
+});
+
+test('clearProfiles: empties profiles map and emits', () => {
+  const store = createStore(makeStorage(), makeStorage());
+  const fired = [];
+  store.on('profilesCleared', () => fired.push(1));
+  store.setProfile('a'.repeat(64), { name: 'Alice' });
+  store.clearProfiles();
+  assert.equal(store.profiles.size, 0);
+  assert.equal(fired.length, 1);
+});
+
 // ── follows ───────────────────────────────────────────────────────────────────
 
 test('setFollows: replaces follow list and updates followedPubkeys', () => {
@@ -388,6 +486,25 @@ test('addMention: deduplicates by id', () => {
   const e = makeEvent({ kind: 1 });
   store.addMention(e);
   store.addMention(e);
+  assert.equal(store.mentions.length, 1);
+});
+
+test('removeMention: removes mention by id and emits', () => {
+  const store = createStore(makeStorage(), makeStorage());
+  const fired = [];
+  store.on('mentions', (m) => fired.push(m.length));
+  const e = makeEvent({ kind: 1 });
+  store.addMention(e);
+  store.removeMention(e.id);
+  assert.equal(store.mentions.length, 0);
+  assert.equal(fired.at(-1), 0);
+});
+
+test('removeMention: noop for unknown id', () => {
+  const store = createStore(makeStorage(), makeStorage());
+  const e = makeEvent({ kind: 1 });
+  store.addMention(e);
+  store.removeMention('z'.repeat(64));
   assert.equal(store.mentions.length, 1);
 });
 

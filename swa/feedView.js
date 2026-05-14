@@ -1,6 +1,3 @@
-// Pure render functions for feed, replies, and follow items.
-// Functions receive data slices and return DOM nodes — they never read from store directly.
-
 import { resolveReplyTag } from './threading.js';
 
 const OTS_VERIFY_URL = 'https://opentimestamps.org';
@@ -61,6 +58,20 @@ export function createVerifiedBadge(identifier) {
   badge.textContent = '✓ ' + identifier;
   badge.title = `Verified identity: ${identifier}`;
   return badge;
+}
+
+export function createUnverifiedBadge(identifier) {
+  const badge = document.createElement('span');
+  badge.className = 'unverified-badge';
+  badge.textContent = '? ' + identifier;
+  badge.title = `Unverified identity claim: ${identifier}. Verification is pending or failed.`;
+  return badge;
+}
+
+export function renderIdentityBadge(pubkey, profile, verifiedIdentities) {
+  if (verifiedIdentities.has(pubkey)) return createVerifiedBadge(verifiedIdentities.get(pubkey));
+  if (profile?.nip05) return createUnverifiedBadge(profile.nip05);
+  return null;
 }
 
 export function createOtsBadge(raw, eventId) {
@@ -129,15 +140,24 @@ export function createAvatar(profile, displayName, pubkey) {
   return avatar;
 }
 
-/**
- * Renders a feed event card.
- * @param {object} event - The Nostr event.
- * @param {object} slice - { signer, profiles, verifiedIdentities, attestations, followedPubkeys, events }
- * @param {object} callbacks - { onFollow, onReply, onShowReplies, onDelete, onScrollToParent, onQuote }
- */
+export function createQuoteEmbed(quotedEvent, profile, verifiedIdentities) {
+  const embed = renderReply(quotedEvent, { profiles: new Map([[quotedEvent.pubkey, profile]]), verifiedIdentities });
+  embed.classList.add('quote-embed');
+  embed.dataset.quoteId = quotedEvent.id;
+  return embed;
+}
+
+export function createQuotePlaceholder(quotedId) {
+  const placeholder = document.createElement('div');
+  placeholder.className = 'quote-embed quote-embed--pending';
+  placeholder.dataset.quoteId = quotedId;
+  placeholder.textContent = 'Loading quoted post…';
+  return placeholder;
+}
+
 export function renderEvent(event, slice, callbacks) {
-  const { signer, profiles, verifiedIdentities, attestations, followedPubkeys, events } = slice;
-  const { onFollow, onReply, onShowReplies, onDelete, onScrollToParent, onQuote } = callbacks;
+  const { signer, profiles, verifiedIdentities, attestations, followedPubkeys, events, quotedEvents } = slice;
+  const { onFollow, onReply, onShowReplies, onDelete, onScrollToParent, onQuote, onQuoteSeen } = callbacks;
 
   const card = document.createElement('div');
   card.className = 'event-card';
@@ -163,7 +183,8 @@ export function renderEvent(event, slice, callbacks) {
   const metaLeft = document.createElement('div');
   metaLeft.className = 'event-meta-left';
   metaLeft.append(avatar, authorEl, time);
-  if (verifiedIdentities.has(event.pubkey)) metaLeft.appendChild(createVerifiedBadge(verifiedIdentities.get(event.pubkey)));
+  const idBadge = renderIdentityBadge(event.pubkey, profile, verifiedIdentities);
+  if (idBadge) metaLeft.appendChild(idBadge);
   if (attestations.has(event.id)) metaLeft.appendChild(createOtsBadge(attestations.get(event.id).raw, event.id));
   meta.appendChild(metaLeft);
 
@@ -196,6 +217,18 @@ export function renderEvent(event, slice, callbacks) {
   const content = document.createElement('div');
   content.className = 'event-content';
   content.appendChild(renderMentionContent(event.content, event.tags, profiles));
+
+  const qTag = event.tags.find(t => t[0] === 'q' && t[1]);
+  if (qTag) {
+    const quotedId = qTag[1];
+    const quoted = quotedEvents?.get(quotedId) || events.find(e => e.id === quotedId);
+    if (quoted) {
+      content.appendChild(createQuoteEmbed(quoted, profiles.get(quoted.pubkey), verifiedIdentities));
+    } else {
+      content.appendChild(createQuotePlaceholder(quotedId));
+      onQuoteSeen?.(quotedId);
+    }
+  }
 
   const actions = document.createElement('div');
   actions.className = 'event-actions';
@@ -382,11 +415,6 @@ function createQuoteForm(quotedEvent, onQuote) {
   return form;
 }
 
-/**
- * Renders a reply card (compact, no actions).
- * @param {object} event - The Nostr event.
- * @param {object} slice - { profiles, verifiedIdentities }
- */
 export function renderReply(event, slice) {
   const { profiles, verifiedIdentities } = slice;
   const card = document.createElement('div');
@@ -410,7 +438,8 @@ export function renderReply(event, slice) {
   time.textContent = formatTime(event.created_at);
 
   meta.append(avatar, authorEl, time);
-  if (verifiedIdentities.has(event.pubkey)) meta.appendChild(createVerifiedBadge(verifiedIdentities.get(event.pubkey)));
+  const idBadge = renderIdentityBadge(event.pubkey, profile, verifiedIdentities);
+  if (idBadge) meta.appendChild(idBadge);
 
   const content = document.createElement('div');
   content.className = 'event-content';
@@ -420,14 +449,6 @@ export function renderReply(event, slice) {
   return card;
 }
 
-/**
- * Renders a follow list item.
- * @param {object} f - Follow entry { pubkey, relay, petname }
- * @param {object} slice - { profiles, verifiedIdentities }
- * @param {object} callbacks - { onUnfollow, onPetnameChange, onRelayChange }
- *   onPetnameChange(f, newValue) — called only when value changed; app validates
- *   onRelayChange(f, newValue)   — called only when value changed; returns false to revert input
- */
 export function renderFollowItem(f, slice, callbacks) {
   const { profiles, verifiedIdentities } = slice;
   const { onUnfollow, onPetnameChange, onRelayChange } = callbacks;
@@ -448,7 +469,8 @@ export function renderFollowItem(f, slice, callbacks) {
   nameEl.textContent = displayName;
   nameEl.title = f.pubkey;
   info.appendChild(nameEl);
-  if (verifiedIdentities.has(f.pubkey)) info.appendChild(createVerifiedBadge(verifiedIdentities.get(f.pubkey)));
+  const idBadge = renderIdentityBadge(f.pubkey, profile, verifiedIdentities);
+  if (idBadge) info.appendChild(idBadge);
 
   const petnameInput = document.createElement('input');
   petnameInput.type = 'text';

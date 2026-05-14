@@ -34,13 +34,6 @@ export function createStore(ls, ss) {
     listeners.get(event).push(fn);
   }
 
-  function off(event, fn) {
-    const fns = listeners.get(event);
-    if (!fns) return;
-    const idx = fns.indexOf(fn);
-    if (idx !== -1) fns.splice(idx, 1);
-  }
-
   function emit(event, data) {
     listeners.get(event)?.forEach(fn => {
       try { fn(data); } catch (err) { console.error(`store listener error [${event}]:`, err); }
@@ -56,7 +49,6 @@ export function createStore(ls, ss) {
     followedPubkeys: new Set(),
 
     on,
-    off,
 
     setSigner(signer) {
       this.signer = signer;
@@ -145,6 +137,11 @@ export function createStore(ls, ss) {
       emit('relayInfo', url);
     },
 
+    clearRelayInfos() {
+      this.relayInfos = new Map();
+      emit('relayInfosCleared');
+    },
+
     attestations: new Map(),
 
     setAttestation(eventId, raw) {
@@ -160,6 +157,11 @@ export function createStore(ls, ss) {
       emit('verifiedIdentity', pubkey);
     },
 
+    clearVerifiedIdentities() {
+      this.verifiedIdentities = new Map();
+      emit('verifiedIdentitiesCleared');
+    },
+
     profiles: new Map(),
 
     setProfile(pubkey, metadata) {
@@ -167,11 +169,17 @@ export function createStore(ls, ss) {
       emit('profiles', pubkey);
     },
 
+    clearProfiles() {
+      this.profiles = new Map();
+      emit('profilesCleared');
+    },
+
     mentions: [],
 
     addMention(event) {
       if (this.mentions.some(e => e.id === event.id)) return;
       sortedInsert(this.mentions, event);
+      if (this.mentions.length > MAX_EVENTS) this.mentions.length = MAX_EVENTS;
       emit('mentions', this.mentions);
     },
 
@@ -193,12 +201,26 @@ export function createStore(ls, ss) {
     addDm(event) {
       if (this.dms.some(e => e.id === event.id)) return;
       sortedInsert(this.dms, event);
+      if (this.dms.length > MAX_EVENTS) this.dms.length = MAX_EVENTS;
       emit('dm', event);
     },
 
     setDmDecrypted(eventId, text) {
       this.dmDecrypted.set(eventId, text);
       emit('dmDecrypted', eventId);
+    },
+
+    quotedEvents: new Map(),
+
+    addQuotedEvent(event) {
+      if (this.quotedEvents.has(event.id)) return;
+      this.quotedEvents.set(event.id, event);
+      emit('quotedEvent', event.id);
+    },
+
+    clearQuotedEvents() {
+      this.quotedEvents = new Map();
+      emit('quotedEventsCleared');
     },
 
     setFollows(entries) {

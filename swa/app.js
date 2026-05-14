@@ -7,9 +7,12 @@ import { VERSION } from './version.js';
 import { buildReplyTags, buildMentionEvent, buildQuoteTag } from './threading.js';
 import { fetchRelayInfo } from './relayInfo.js';
 import { RelayPool } from './relayPool.js';
+import { findAuthorizedDeletions } from './deletions.js';
+import { getDmContact, aggregateDmContacts } from './dms.js';
+import { renderDmConvItem, renderDmThreadTitle, renderDmMessage } from './dmView.js';
 import {
   renderEvent, renderReply, renderFollowItem,
-  getDisplayName, formatTime, createOtsBadge, createVerifiedBadge,
+  createOtsBadge, createQuoteEmbed,
 } from './feedView.js';
 const SUPPORTED_SPECS = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10'];
 
@@ -78,6 +81,7 @@ const dmThread = document.getElementById('dm-thread');
 const dmThreadTitle = document.getElementById('dm-thread-title');
 const dmMessages = document.getElementById('dm-messages');
 const dmCompose = document.getElementById('dm-compose');
+const dmCharCount = document.getElementById('dm-char-count');
 const dmSendBtn = document.getElementById('dm-send-btn');
 const dmResult = document.getElementById('dm-result');
 
@@ -145,6 +149,9 @@ let dmSubId = null;
 let currentDmContact = null; // pubkey of the open DM thread
 const identityVerifyAttempted = new Set(); // pubkeys already attempted (verified or failed)
 let feedRetryTimer = null;
+const pendingQuoteIds = new Set();
+let quoteFetchDebounceTimer = null;
+let quoteFetchSubId = null;
 let sinceFilter = 0; // seconds offset from now; 0 = no filter
 let untilFilter = 0; // seconds offset from now; 0 = no filter
 let feedActiveTab = 'feed'; // 'feed' | 'following' | 'mentions'
@@ -201,7 +208,7 @@ const savedPrivkey = sessionStorage.getItem('privkeyHex');
 if (savedPrivkey) {
   try {
     const keys = importPrivkey(savedPrivkey);
-    store.signer = new LocalSigner(keys); // set directly — no emit needed at startup
+    store.setSigner(new LocalSigner(keys));
     pubkeyDisplay.value = keys.pubkeyHex;
   } catch {
     sessionStorage.removeItem('privkeyHex');
@@ -231,6 +238,7 @@ store.on('signer', (signer) => {
     }
     if (isAnyConnected()) setupSubscriptions();
   } else {
+    identityVerifyAttempted.clear();
     updateFeedTabs();
   }
 });
@@ -239,7 +247,7 @@ store.on('follows', (follows) => {
   followsStatus.textContent = follows.length === 0 ? 'Not following anyone yet.' : '';
   renderFollows(follows);
   updateFeedTabs();
-  if (feedActiveTab === 'following') {
+  if (feedActiveTab === 'following' && store.signer && isAnyConnected()) {
     subscribeToFeed();
   }
 });
@@ -260,14 +268,14 @@ store.on('eventAdded', ({ event, insertIdx }) => {
 });
 
 store.on('profiles', (pubkey) => {
-  if (store.events.some(e => e.pubkey === pubkey) || store.mentions.some(e => e.pubkey === pubkey)) rerenderFeed();
+  updateCardsForPubkey(pubkey);
   renderFollows(store.follows);
   rerenderDmConvList();
   if (pubkey === currentDmContact) updateDmThreadTitle(pubkey);
 });
 
 store.on('verifiedIdentity', (pubkey) => {
-  if (store.events.some(e => e.pubkey === pubkey) || store.mentions.some(e => e.pubkey === pubkey)) rerenderFeed();
+  updateCardsForPubkey(pubkey);
   renderFollows(store.follows);
   rerenderDmConvList();
   if (pubkey === currentDmContact) updateDmThreadTitle(pubkey);
@@ -308,6 +316,16 @@ store.on('eventRemoved', (eventId) => {
   mentionsList.querySelector(`[data-event-id="${eventId}"]`)?.remove();
 });
 
+store.on('quotedEvent', (eventId) => {
+  const event = store.quotedEvents.get(eventId);
+  if (!event) return;
+  if (!verifyEvent(event)) return;
+  const profile = store.profiles.get(event.pubkey);
+  for (const placeholder of document.querySelectorAll(`[data-quote-id="${eventId}"]`)) {
+    placeholder.replaceWith(createQuoteEmbed(event, profile, store.verifiedIdentities));
+  }
+});
+
 store.on('relayInfo', (url) => {
   rerenderRelayList();
   if (url === currentRelayModalUrl) openRelayModal(url);
@@ -331,6 +349,8 @@ generateBtn.addEventListener('click', () => {
   privkeyDisplayWrapper.hidden = false;
   importError.hidden = true;
 });
+
+privkeyImport.addEventListener('keydown', (e) => { if (e.key === 'Enter') importBtn.click(); });
 
 importBtn.addEventListener('click', () => {
   const hex = privkeyImport.value.trim();
@@ -466,6 +486,10 @@ logoutBtn.addEventListener('click', () => {
 
   store.clearEvents();
   store.clearMentions();
+  store.clearProfiles();
+  store.clearVerifiedIdentities();
+  store.clearRelayInfos();
+  store.clearQuotedEvents();
   store.setFollows([]);
 
   dmConvsList.innerHTML = '';
@@ -607,6 +631,8 @@ function removeRelay(url) {
 
 // ── Following ─────────────────────────────────────────────────────────────────
 
+followPubkeyInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') followBtn.click(); });
+
 followBtn.addEventListener('click', async () => {
   if (!requireKeysAndRelay(showFollowError)) return;
 
@@ -633,10 +659,17 @@ followBtn.addEventListener('click', async () => {
 
 async function handleUnfollow(pubkey) {
   store.removeFollow(pubkey);
+  let msg = 'Unfollowed.';
   try {
     await publishFollowList();
   } catch {
-    // Ignore relay error for unfollow
+    msg = 'Unfollowed locally — relay error.';
+  }
+  if (store.follows.length > 0) {
+    followsStatus.textContent = msg;
+    setTimeout(() => {
+      if (followsStatus.textContent === msg) followsStatus.textContent = '';
+    }, 2000);
   }
 }
 
@@ -807,6 +840,9 @@ function setupSubscriptions() {
   subIdHandlers.clear();
   subIdEOSEHandlers.clear();
   subIdClosedHandlers.clear();
+  replySubscriptions.clear();
+  replySubIdToContainer.clear();
+  replyEventIds.clear();
   ownProfileSubId = null;
   followsSubId = null;
   feedSubId = null;
@@ -947,13 +983,6 @@ function subscribeAttestations() {
 
 // ── Direct Messages ───────────────────────────────────────────────────────────
 
-function getDmContact(event, myPubkey) {
-  if (!myPubkey) return null;
-  return event.pubkey === myPubkey
-    ? (event.tags.find(t => t[0] === 'p')?.[1] ?? null)
-    : event.pubkey;
-}
-
 function handleDmEvent(event) {
   if (!store.signer) return;
   const myPubkey = store.signer.pubkeyHex;
@@ -975,57 +1004,31 @@ async function tryDecryptDm(event) {
   }
 }
 
+function makeDmListSlice() {
+  return {
+    profiles: store.profiles,
+    verifiedIdentities: store.verifiedIdentities,
+    dmDecrypted: store.dmDecrypted,
+    currentDmContact,
+  };
+}
+
 function rerenderDmConvList() {
   if (!store.signer) return;
   dmConvsList.innerHTML = '';
-  const myPubkey = store.signer.pubkeyHex;
-  const contacts = new Map(); // pubkey → latest event
-  for (const event of store.dms) {
-    const contact = getDmContact(event, myPubkey);
-    if (!contact) continue;
-    if (!contacts.has(contact) || event.created_at > contacts.get(contact).created_at) {
-      contacts.set(contact, event);
-    }
-  }
-  if (contacts.size === 0) return;
-  const sorted = [...contacts.entries()].sort((a, b) => b[1].created_at - a[1].created_at);
+  const sorted = aggregateDmContacts(store.dms, store.signer.pubkeyHex);
+  const slice = makeDmListSlice();
   for (const [pubkey, latestEvent] of sorted) {
-    const profile = store.profiles.get(pubkey);
-    const displayName = getDisplayName(profile, pubkey.slice(0, 12) + '…');
-    const preview = store.dmDecrypted.get(latestEvent.id) ?? '…';
-
-    const item = document.createElement('div');
-    item.className = 'dm-conv-item' + (pubkey === currentDmContact ? ' active' : '');
-
-    const nameRow = document.createElement('div');
-    nameRow.className = 'dm-conv-name-row';
-
-    const nameEl = document.createElement('span');
-    nameEl.className = 'dm-conv-name';
-    nameEl.textContent = displayName;
-    nameRow.appendChild(nameEl);
-    if (store.verifiedIdentities.has(pubkey)) {
-      nameRow.appendChild(createVerifiedBadge(store.verifiedIdentities.get(pubkey)));
-    }
-
-    const previewEl = document.createElement('span');
-    previewEl.className = 'dm-conv-preview';
-    previewEl.textContent = preview.length > 50 ? preview.slice(0, 50) + '…' : preview;
-
-    item.append(nameRow, previewEl);
-    item.addEventListener('click', () => openDmThread(pubkey));
-    dmConvsList.appendChild(item);
+    dmConvsList.appendChild(renderDmConvItem(pubkey, latestEvent, slice, openDmThread));
   }
 }
 
 function updateDmThreadTitle(pubkey) {
-  const profile = store.profiles.get(pubkey);
-  const displayName = getDisplayName(profile, pubkey.slice(0, 12) + '…');
   dmThreadTitle.textContent = '';
-  dmThreadTitle.appendChild(document.createTextNode(`Conversation with ${displayName}`));
-  if (store.verifiedIdentities.has(pubkey)) {
-    dmThreadTitle.appendChild(createVerifiedBadge(store.verifiedIdentities.get(pubkey)));
-  }
+  dmThreadTitle.appendChild(renderDmThreadTitle(pubkey, {
+    profiles: store.profiles,
+    verifiedIdentities: store.verifiedIdentities,
+  }));
 }
 
 function openDmThread(pubkey) {
@@ -1035,7 +1038,7 @@ function openDmThread(pubkey) {
   const myPubkey = store.signer?.pubkeyHex;
   const msgs = store.dms
     .filter(e => getDmContact(e, myPubkey) === pubkey)
-    .slice().reverse(); // oldest first
+    .slice().reverse();
   for (const event of msgs) appendDmMessage(event);
   dmThread.hidden = false;
   dmMessages.scrollTop = dmMessages.scrollHeight;
@@ -1044,24 +1047,10 @@ function openDmThread(pubkey) {
 
 function appendDmMessage(event) {
   if (!store.signer) return;
-  const isOutgoing = event.pubkey === store.signer.pubkeyHex;
-  const decrypted = store.dmDecrypted.get(event.id);
-
-  const wrapper = document.createElement('div');
-  wrapper.dataset.dmId = event.id;
-  wrapper.className = 'dm-message-wrapper ' + (isOutgoing ? 'outgoing' : 'incoming');
-  if (decrypted === undefined) wrapper.classList.add('dm-pending');
-
-  const bubble = document.createElement('div');
-  bubble.className = 'dm-bubble';
-  bubble.textContent = decrypted !== undefined ? decrypted : '…';
-
-  const timeEl = document.createElement('div');
-  timeEl.className = 'dm-message-time';
-  timeEl.textContent = formatTime(event.created_at);
-
-  wrapper.append(bubble, timeEl);
-  dmMessages.appendChild(wrapper);
+  dmMessages.appendChild(renderDmMessage(event, {
+    myPubkey: store.signer.pubkeyHex,
+    dmDecrypted: store.dmDecrypted,
+  }));
 }
 
 dmOpenBtn.addEventListener('click', () => {
@@ -1076,6 +1065,8 @@ dmOpenBtn.addEventListener('click', () => {
 });
 
 dmRecipientInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') dmOpenBtn.click(); });
+
+dmCompose.addEventListener('input', () => { dmCharCount.textContent = dmCompose.value.length; });
 
 dmSendBtn.addEventListener('click', async () => {
   if (!requireKeysAndRelay((msg) => setResult(dmResult, msg, 'err'))) return;
@@ -1095,6 +1086,7 @@ dmSendBtn.addEventListener('click', async () => {
     await publishToAll(event);
     store.addDm(event);
     dmCompose.value = '';
+    dmCharCount.textContent = '0';
     setResult(dmResult, '', '');
   } catch (err) {
     setResult(dmResult, err.message, 'err');
@@ -1263,6 +1255,18 @@ function rerenderFeed() {
   }
 }
 
+function updateCardsForPubkey(pubkey) {
+  const slice = makeStoreSlice();
+  const callbacks = makeRenderCallbacks();
+  for (const list of [eventsList, mentionsList]) {
+    for (const oldCard of list.querySelectorAll(`[data-event-id]`)) {
+      const eventId = oldCard.dataset.eventId;
+      const event = store.events.find(e => e.id === eventId) || store.mentions.find(e => e.id === eventId);
+      if (event && event.pubkey === pubkey) oldCard.replaceWith(renderEvent(event, slice, callbacks));
+    }
+  }
+}
+
 function switchTab(tab) {
   feedActiveTab = tab;
   tabFeed.classList.toggle('active', tab === 'feed');
@@ -1332,15 +1336,10 @@ async function handleDeleteEvent(event) {
 }
 
 function handleIncomingDeletion(deletionEvent) {
-  for (const tag of deletionEvent.tags) {
-    if (tag[0] !== 'e' || !tag[1]) continue;
-    const targetId = tag[1];
-    const stored = store.events.find(e => e.id === targetId)
-      || store.mentions.find(e => e.id === targetId);
-    if (stored && stored.pubkey === deletionEvent.pubkey) {
-      store.removeEvent(targetId);
-      store.removeMention(targetId);
-    }
+  const candidates = [...store.events, ...store.mentions];
+  for (const id of findAuthorizedDeletions(deletionEvent, candidates)) {
+    store.removeEvent(id);
+    store.removeMention(id);
   }
 }
 
@@ -1371,7 +1370,34 @@ function makeStoreSlice() {
     attestations: store.attestations,
     followedPubkeys: store.followedPubkeys,
     events: store.events,
+    quotedEvents: store.quotedEvents,
   };
+}
+
+function requestQuotedEvent(quotedId) {
+  if (store.quotedEvents.has(quotedId)) return;
+  if (store.events.some(e => e.id === quotedId)) return;
+  if (pendingQuoteIds.has(quotedId)) return;
+  pendingQuoteIds.add(quotedId);
+  clearTimeout(quoteFetchDebounceTimer);
+  quoteFetchDebounceTimer = setTimeout(flushPendingQuotes, 200);
+}
+
+function flushPendingQuotes() {
+  if (pendingQuoteIds.size === 0 || !isAnyConnected()) return;
+  const ids = [...pendingQuoteIds];
+  pendingQuoteIds.clear();
+  if (quoteFetchSubId) unsubscribeAll(quoteFetchSubId);
+  quoteFetchSubId = crypto.randomUUID();
+  subIdHandlers.set(quoteFetchSubId, (event) => {
+    if (ids.includes(event.id)) store.addQuotedEvent(event);
+  });
+  subIdEOSEHandlers.set(quoteFetchSubId, () => {
+    if (quoteFetchSubId) unsubscribeAll(quoteFetchSubId);
+    quoteFetchSubId = null;
+  });
+  subIdClosedHandlers.set(quoteFetchSubId, (url, msg) => showSubClosedNotice(url, 'quotes', msg));
+  subscribeAll(quoteFetchSubId, [{ ids }]);
 }
 
 function makeRenderCallbacks() {
@@ -1436,6 +1462,7 @@ function makeRenderCallbacks() {
       }
     },
     onDelete: handleDeleteEvent,
+    onQuoteSeen: requestQuotedEvent,
     onScrollToParent: (eventId) => {
       const card = eventsList.querySelector(`[data-event-id="${eventId}"]`);
       if (!card) return;

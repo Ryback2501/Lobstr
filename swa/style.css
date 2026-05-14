@@ -793,6 +793,20 @@ details[open] > summary::before {
   word-break: break-word;
 }
 
+.quote-embed {
+  margin-top: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.6rem 0.75rem;
+  background: var(--surface2);
+}
+
+.quote-embed--pending {
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-style: italic;
+}
+
 .reply-form-actions {
   display: flex;
   align-items: center;
@@ -905,6 +919,20 @@ details[open] > summary::before {
   background: rgba(34, 197, 94, 0.1);
   border: 1px solid rgba(34, 197, 94, 0.3);
   color: var(--green);
+  white-space: nowrap;
+  flex-shrink: 0;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.unverified-badge {
+  font-size: 0.68rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  background: rgba(234, 179, 8, 0.08);
+  border: 1px solid rgba(234, 179, 8, 0.3);
+  color: var(--yellow);
   white-space: nowrap;
   flex-shrink: 0;
   max-width: 160px;
