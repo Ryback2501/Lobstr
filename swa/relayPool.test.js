@@ -325,6 +325,19 @@ test('resubscribeFor: re-sends active sub to specific relay', () => {
   assert.equal(Mock.instances[0].subscribeCalls.at(-1).subId, 'sub1');
 });
 
+test('resubscribeFor: noop when target relay is disconnected', () => {
+  const Mock = makeConnectionClass();
+  const pool = new RelayPool({ connectionClass: Mock });
+  pool.add('wss://a.example');
+  pool.connect('wss://a.example');
+  Mock.instances[0].fireStatus('connected');
+  pool.subscribe('sub1', [{ kinds: [1] }]);
+  const callsBefore = Mock.instances[0].subscribeCalls.length;
+  pool.disconnect('wss://a.example');
+  pool.resubscribeFor('wss://a.example', 'sub1');
+  assert.equal(Mock.instances[0].subscribeCalls.length, callsBefore);
+});
+
 test('resubscribeFor: noop when subId not in activeSubs', () => {
   const Mock = makeConnectionClass();
   const pool = new RelayPool({ connectionClass: Mock });
