@@ -1287,7 +1287,13 @@ function updateIdentityUI() {
   securitySection.hidden = !hasKeys;
   extensionBadge.hidden = !isExtension;
   extensionError.hidden = true;
-  if (!hasKeys) showLoginBtns();
+  if (!hasKeys) {
+    showLoginBtns();
+    privkeyDisplay.value = '';
+    privkeyDisplayWrapper.hidden = true;
+    mnemonicDisplay.innerHTML = '';
+    mnemonicDisplayWrapper.hidden = true;
+  }
 }
 
 async function handleDeleteEvent(event) {
