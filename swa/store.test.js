@@ -316,6 +316,34 @@ test('setAttestation: first write wins, subsequent ignored', () => {
   assert.equal(fired.length, 1);
 });
 
+// ── setVerifiedIdentity ───────────────────────────────────────────────────────
+
+test('setVerifiedIdentity: stores identifier and emits with pubkey', () => {
+  const store = createStore(makeStorage(), makeStorage());
+  const fired = [];
+  store.on('verifiedIdentity', (pk) => fired.push(pk));
+  store.setVerifiedIdentity('a'.repeat(64), 'alice@example.com');
+  assert.equal(store.verifiedIdentities.get('a'.repeat(64)), 'alice@example.com');
+  assert.equal(fired[0], 'a'.repeat(64));
+});
+
+test('setVerifiedIdentity: overwrites previous identifier for same pubkey', () => {
+  const store = createStore(makeStorage(), makeStorage());
+  store.setVerifiedIdentity('a'.repeat(64), 'old@example.com');
+  store.setVerifiedIdentity('a'.repeat(64), 'new@example.com');
+  assert.equal(store.verifiedIdentities.get('a'.repeat(64)), 'new@example.com');
+});
+
+test('clearVerifiedIdentities: empties map and emits', () => {
+  const store = createStore(makeStorage(), makeStorage());
+  const fired = [];
+  store.on('verifiedIdentitiesCleared', () => fired.push(1));
+  store.setVerifiedIdentity('a'.repeat(64), 'alice@example.com');
+  store.clearVerifiedIdentities();
+  assert.equal(store.verifiedIdentities.size, 0);
+  assert.equal(fired.length, 1);
+});
+
 // ── setProfile ────────────────────────────────────────────────────────────────
 
 test('setProfile: stores metadata and emits profiles with pubkey', () => {
