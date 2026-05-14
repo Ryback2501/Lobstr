@@ -7,6 +7,7 @@ import { VERSION } from './version.js';
 import { buildReplyTags, buildMentionEvent, buildQuoteTag } from './threading.js';
 import { fetchRelayInfo } from './relayInfo.js';
 import { RelayPool } from './relayPool.js';
+import { findAuthorizedDeletions } from './deletions.js';
 import { getDmContact, aggregateDmContacts } from './dms.js';
 import { renderDmConvItem, renderDmThreadTitle, renderDmMessage } from './dmView.js';
 import {
@@ -1321,15 +1322,10 @@ async function handleDeleteEvent(event) {
 }
 
 function handleIncomingDeletion(deletionEvent) {
-  for (const tag of deletionEvent.tags) {
-    if (tag[0] !== 'e' || !tag[1]) continue;
-    const targetId = tag[1];
-    const stored = store.events.find(e => e.id === targetId)
-      || store.mentions.find(e => e.id === targetId);
-    if (stored && stored.pubkey === deletionEvent.pubkey) {
-      store.removeEvent(targetId);
-      store.removeMention(targetId);
-    }
+  const candidates = [...store.events, ...store.mentions];
+  for (const id of findAuthorizedDeletions(deletionEvent, candidates)) {
+    store.removeEvent(id);
+    store.removeMention(id);
   }
 }
 
