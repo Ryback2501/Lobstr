@@ -144,10 +144,25 @@ header .subtitle {
   gap: 0.5rem;
 }
 
+.login-btn-list[hidden] {
+  display: none;
+}
+
+.login-action-row {
+  display: flex;
+  flex-direction: row;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
 .login-choice-btn {
   width: 100%;
   white-space: normal;
   text-align: center;
+}
+
+.login-action-row .login-choice-btn {
+  flex: 1;
 }
 
 .modal-nips-section {
