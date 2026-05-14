@@ -316,6 +316,34 @@ test('setAttestation: first write wins, subsequent ignored', () => {
   assert.equal(fired.length, 1);
 });
 
+// ── setProfile ────────────────────────────────────────────────────────────────
+
+test('setProfile: stores metadata and emits profiles with pubkey', () => {
+  const store = createStore(makeStorage(), makeStorage());
+  const fired = [];
+  store.on('profiles', (pk) => fired.push(pk));
+  store.setProfile('a'.repeat(64), { name: 'Alice' });
+  assert.equal(store.profiles.get('a'.repeat(64)).name, 'Alice');
+  assert.equal(fired[0], 'a'.repeat(64));
+});
+
+test('setProfile: overwrites existing metadata', () => {
+  const store = createStore(makeStorage(), makeStorage());
+  store.setProfile('a'.repeat(64), { name: 'Old' });
+  store.setProfile('a'.repeat(64), { name: 'New' });
+  assert.equal(store.profiles.get('a'.repeat(64)).name, 'New');
+});
+
+test('clearProfiles: empties profiles map and emits', () => {
+  const store = createStore(makeStorage(), makeStorage());
+  const fired = [];
+  store.on('profilesCleared', () => fired.push(1));
+  store.setProfile('a'.repeat(64), { name: 'Alice' });
+  store.clearProfiles();
+  assert.equal(store.profiles.size, 0);
+  assert.equal(fired.length, 1);
+});
+
 // ── follows ───────────────────────────────────────────────────────────────────
 
 test('setFollows: replaces follow list and updates followedPubkeys', () => {
