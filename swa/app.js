@@ -491,6 +491,7 @@ logoutBtn.addEventListener('click', () => {
   store.clearRelayInfos();
   store.clearQuotedEvents();
   store.setFollows([]);
+  store.setConnectedRelayUrls(new Set());
 
   dmConvsList.innerHTML = '';
   currentDmContact = null;
