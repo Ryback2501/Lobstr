@@ -57,8 +57,10 @@ export class RelayPool {
   disconnect(url) {
     const entry = this.#relays.get(url);
     if (entry?.conn) {
+      entry.conn.onStatus = () => {};
       entry.conn.disconnect();
       entry.conn = null;
+      entry.status = 'disconnected';
     }
   }
 
