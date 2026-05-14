@@ -14,7 +14,7 @@ import {
   renderEvent, renderReply, renderFollowItem,
   createOtsBadge, createQuoteEmbed,
 } from './feedView.js';
-const SUPPORTED_SPECS = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10'];
+const SUPPORTED_SPECS = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11'];
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 
@@ -189,7 +189,7 @@ infoModal.addEventListener('click', (e) => { if (e.target === infoModal) infoMod
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     infoModal.hidden = true;
-    relayInfoModal.hidden = true;
+    if (!relayInfoModal.hidden) closeRelayModal();
   }
 });
 
@@ -1136,7 +1136,11 @@ function rerenderRelayList() {
     const relayName = store.relayInfos.get(url)?.name;
     urlEl.textContent = relayName || url;
     urlEl.title = url;
-    urlEl.addEventListener('click', () => openRelayModal(url));
+    const infoAvailable = status === 'connected' && store.relayInfos.has(url);
+    if (infoAvailable) {
+      urlEl.classList.add('clickable');
+      urlEl.addEventListener('click', () => openRelayModal(url));
+    }
 
     const toggleBtn = document.createElement('button');
     toggleBtn.className = 'btn-relay-toggle';
@@ -1245,8 +1249,13 @@ function openRelayModal(url) {
   relayInfoModal.hidden = false;
 }
 
-relayModalClose.addEventListener('click', () => { relayInfoModal.hidden = true; });
-relayInfoModal.addEventListener('click', (e) => { if (e.target === relayInfoModal) relayInfoModal.hidden = true; });
+function closeRelayModal() {
+  relayInfoModal.hidden = true;
+  currentRelayModalUrl = null;
+}
+
+relayModalClose.addEventListener('click', closeRelayModal);
+relayInfoModal.addEventListener('click', (e) => { if (e.target === relayInfoModal) closeRelayModal(); });
 
 function rerenderFeed() {
   if (!store.events.length) return;

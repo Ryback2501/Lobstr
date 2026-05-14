@@ -517,10 +517,13 @@ details[open] > summary::before {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.relay-item-url.clickable {
   cursor: pointer;
 }
 
-.relay-item-url:hover {
+.relay-item-url.clickable:hover {
   color: var(--text);
 }
 
