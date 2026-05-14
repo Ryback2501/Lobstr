@@ -262,14 +262,14 @@ store.on('eventAdded', ({ event, insertIdx }) => {
 });
 
 store.on('profiles', (pubkey) => {
-  if (store.events.some(e => e.pubkey === pubkey) || store.mentions.some(e => e.pubkey === pubkey)) rerenderFeed();
+  updateCardsForPubkey(pubkey);
   renderFollows(store.follows);
   rerenderDmConvList();
   if (pubkey === currentDmContact) updateDmThreadTitle(pubkey);
 });
 
 store.on('verifiedIdentity', (pubkey) => {
-  if (store.events.some(e => e.pubkey === pubkey) || store.mentions.some(e => e.pubkey === pubkey)) rerenderFeed();
+  updateCardsForPubkey(pubkey);
   renderFollows(store.follows);
   rerenderDmConvList();
   if (pubkey === currentDmContact) updateDmThreadTitle(pubkey);
@@ -1280,6 +1280,18 @@ function rerenderFeed() {
   eventsList.innerHTML = '';
   for (const event of store.events) {
     eventsList.appendChild(renderEvent(event, makeStoreSlice(), makeRenderCallbacks()));
+  }
+}
+
+function updateCardsForPubkey(pubkey) {
+  const slice = makeStoreSlice();
+  const callbacks = makeRenderCallbacks();
+  for (const list of [eventsList, mentionsList]) {
+    for (const oldCard of list.querySelectorAll(`[data-event-id]`)) {
+      const eventId = oldCard.dataset.eventId;
+      const event = store.events.find(e => e.id === eventId) || store.mentions.find(e => e.id === eventId);
+      if (event && event.pubkey === pubkey) oldCard.replaceWith(renderEvent(event, slice, callbacks));
+    }
   }
 }
 
