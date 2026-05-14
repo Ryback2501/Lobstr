@@ -8,9 +8,10 @@ import { buildReplyTags, buildMentionEvent, buildQuoteTag } from './threading.js
 import { fetchRelayInfo } from './relayInfo.js';
 import { RelayPool } from './relayPool.js';
 import { getDmContact, aggregateDmContacts } from './dms.js';
+import { renderDmConvItem, renderDmThreadTitle, renderDmMessage } from './dmView.js';
 import {
   renderEvent, renderReply, renderFollowItem,
-  getDisplayName, formatTime, createOtsBadge, renderIdentityBadge,
+  createOtsBadge,
 } from './feedView.js';
 const SUPPORTED_SPECS = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10'];
 
@@ -988,47 +989,31 @@ async function tryDecryptDm(event) {
   }
 }
 
+function makeDmListSlice() {
+  return {
+    profiles: store.profiles,
+    verifiedIdentities: store.verifiedIdentities,
+    dmDecrypted: store.dmDecrypted,
+    currentDmContact,
+  };
+}
+
 function rerenderDmConvList() {
   if (!store.signer) return;
   dmConvsList.innerHTML = '';
-  const myPubkey = store.signer.pubkeyHex;
-  const sorted = aggregateDmContacts(store.dms, myPubkey);
-  if (sorted.length === 0) return;
+  const sorted = aggregateDmContacts(store.dms, store.signer.pubkeyHex);
+  const slice = makeDmListSlice();
   for (const [pubkey, latestEvent] of sorted) {
-    const profile = store.profiles.get(pubkey);
-    const displayName = getDisplayName(profile, pubkey.slice(0, 12) + '…');
-    const preview = store.dmDecrypted.get(latestEvent.id) ?? '…';
-
-    const item = document.createElement('div');
-    item.className = 'dm-conv-item' + (pubkey === currentDmContact ? ' active' : '');
-
-    const nameRow = document.createElement('div');
-    nameRow.className = 'dm-conv-name-row';
-
-    const nameEl = document.createElement('span');
-    nameEl.className = 'dm-conv-name';
-    nameEl.textContent = displayName;
-    nameRow.appendChild(nameEl);
-    const dmIdBadge = renderIdentityBadge(pubkey, profile, store.verifiedIdentities);
-    if (dmIdBadge) nameRow.appendChild(dmIdBadge);
-
-    const previewEl = document.createElement('span');
-    previewEl.className = 'dm-conv-preview';
-    previewEl.textContent = preview.length > 50 ? preview.slice(0, 50) + '…' : preview;
-
-    item.append(nameRow, previewEl);
-    item.addEventListener('click', () => openDmThread(pubkey));
-    dmConvsList.appendChild(item);
+    dmConvsList.appendChild(renderDmConvItem(pubkey, latestEvent, slice, openDmThread));
   }
 }
 
 function updateDmThreadTitle(pubkey) {
-  const profile = store.profiles.get(pubkey);
-  const displayName = getDisplayName(profile, pubkey.slice(0, 12) + '…');
   dmThreadTitle.textContent = '';
-  dmThreadTitle.appendChild(document.createTextNode(`Conversation with ${displayName}`));
-  const idBadge = renderIdentityBadge(pubkey, profile, store.verifiedIdentities);
-  if (idBadge) dmThreadTitle.appendChild(idBadge);
+  dmThreadTitle.appendChild(renderDmThreadTitle(pubkey, {
+    profiles: store.profiles,
+    verifiedIdentities: store.verifiedIdentities,
+  }));
 }
 
 function openDmThread(pubkey) {
@@ -1038,7 +1023,7 @@ function openDmThread(pubkey) {
   const myPubkey = store.signer?.pubkeyHex;
   const msgs = store.dms
     .filter(e => getDmContact(e, myPubkey) === pubkey)
-    .slice().reverse(); // oldest first
+    .slice().reverse();
   for (const event of msgs) appendDmMessage(event);
   dmThread.hidden = false;
   dmMessages.scrollTop = dmMessages.scrollHeight;
@@ -1047,24 +1032,10 @@ function openDmThread(pubkey) {
 
 function appendDmMessage(event) {
   if (!store.signer) return;
-  const isOutgoing = event.pubkey === store.signer.pubkeyHex;
-  const decrypted = store.dmDecrypted.get(event.id);
-
-  const wrapper = document.createElement('div');
-  wrapper.dataset.dmId = event.id;
-  wrapper.className = 'dm-message-wrapper ' + (isOutgoing ? 'outgoing' : 'incoming');
-  if (decrypted === undefined) wrapper.classList.add('dm-pending');
-
-  const bubble = document.createElement('div');
-  bubble.className = 'dm-bubble';
-  bubble.textContent = decrypted !== undefined ? decrypted : '…';
-
-  const timeEl = document.createElement('div');
-  timeEl.className = 'dm-message-time';
-  timeEl.textContent = formatTime(event.created_at);
-
-  wrapper.append(bubble, timeEl);
-  dmMessages.appendChild(wrapper);
+  dmMessages.appendChild(renderDmMessage(event, {
+    myPubkey: store.signer.pubkeyHex,
+    dmDecrypted: store.dmDecrypted,
+  }));
 }
 
 dmOpenBtn.addEventListener('click', () => {
