@@ -60,6 +60,20 @@ export function createVerifiedBadge(identifier) {
   return badge;
 }
 
+export function createUnverifiedBadge(identifier) {
+  const badge = document.createElement('span');
+  badge.className = 'unverified-badge';
+  badge.textContent = '? ' + identifier;
+  badge.title = `Unverified identity claim: ${identifier}. Verification is pending or failed.`;
+  return badge;
+}
+
+export function renderIdentityBadge(pubkey, profile, verifiedIdentities) {
+  if (verifiedIdentities.has(pubkey)) return createVerifiedBadge(verifiedIdentities.get(pubkey));
+  if (profile?.nip05) return createUnverifiedBadge(profile.nip05);
+  return null;
+}
+
 export function createOtsBadge(raw, eventId) {
   const badge = document.createElement('button');
   badge.className = 'ots-badge';
@@ -154,7 +168,8 @@ export function renderEvent(event, slice, callbacks) {
   const metaLeft = document.createElement('div');
   metaLeft.className = 'event-meta-left';
   metaLeft.append(avatar, authorEl, time);
-  if (verifiedIdentities.has(event.pubkey)) metaLeft.appendChild(createVerifiedBadge(verifiedIdentities.get(event.pubkey)));
+  const idBadge = renderIdentityBadge(event.pubkey, profile, verifiedIdentities);
+  if (idBadge) metaLeft.appendChild(idBadge);
   if (attestations.has(event.id)) metaLeft.appendChild(createOtsBadge(attestations.get(event.id).raw, event.id));
   meta.appendChild(metaLeft);
 
@@ -396,7 +411,8 @@ export function renderReply(event, slice) {
   time.textContent = formatTime(event.created_at);
 
   meta.append(avatar, authorEl, time);
-  if (verifiedIdentities.has(event.pubkey)) meta.appendChild(createVerifiedBadge(verifiedIdentities.get(event.pubkey)));
+  const idBadge = renderIdentityBadge(event.pubkey, profile, verifiedIdentities);
+  if (idBadge) meta.appendChild(idBadge);
 
   const content = document.createElement('div');
   content.className = 'event-content';
@@ -426,7 +442,8 @@ export function renderFollowItem(f, slice, callbacks) {
   nameEl.textContent = displayName;
   nameEl.title = f.pubkey;
   info.appendChild(nameEl);
-  if (verifiedIdentities.has(f.pubkey)) info.appendChild(createVerifiedBadge(verifiedIdentities.get(f.pubkey)));
+  const idBadge = renderIdentityBadge(f.pubkey, profile, verifiedIdentities);
+  if (idBadge) info.appendChild(idBadge);
 
   const petnameInput = document.createElement('input');
   petnameInput.type = 'text';

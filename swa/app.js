@@ -9,7 +9,7 @@ import { fetchRelayInfo } from './relayInfo.js';
 import { RelayPool } from './relayPool.js';
 import {
   renderEvent, renderReply, renderFollowItem,
-  getDisplayName, formatTime, createOtsBadge, createVerifiedBadge,
+  getDisplayName, formatTime, createOtsBadge, renderIdentityBadge,
 } from './feedView.js';
 const SUPPORTED_SPECS = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10'];
 
@@ -1023,9 +1023,8 @@ function rerenderDmConvList() {
     nameEl.className = 'dm-conv-name';
     nameEl.textContent = displayName;
     nameRow.appendChild(nameEl);
-    if (store.verifiedIdentities.has(pubkey)) {
-      nameRow.appendChild(createVerifiedBadge(store.verifiedIdentities.get(pubkey)));
-    }
+    const dmIdBadge = renderIdentityBadge(pubkey, profile, store.verifiedIdentities);
+    if (dmIdBadge) nameRow.appendChild(dmIdBadge);
 
     const previewEl = document.createElement('span');
     previewEl.className = 'dm-conv-preview';
@@ -1042,9 +1041,8 @@ function updateDmThreadTitle(pubkey) {
   const displayName = getDisplayName(profile, pubkey.slice(0, 12) + '…');
   dmThreadTitle.textContent = '';
   dmThreadTitle.appendChild(document.createTextNode(`Conversation with ${displayName}`));
-  if (store.verifiedIdentities.has(pubkey)) {
-    dmThreadTitle.appendChild(createVerifiedBadge(store.verifiedIdentities.get(pubkey)));
-  }
+  const idBadge = renderIdentityBadge(pubkey, profile, store.verifiedIdentities);
+  if (idBadge) dmThreadTitle.appendChild(idBadge);
 }
 
 function openDmThread(pubkey) {

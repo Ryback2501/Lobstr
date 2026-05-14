@@ -912,6 +912,20 @@ details[open] > summary::before {
   text-overflow: ellipsis;
 }
 
+.unverified-badge {
+  font-size: 0.68rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  background: rgba(234, 179, 8, 0.08);
+  border: 1px solid rgba(234, 179, 8, 0.3);
+  color: var(--yellow);
+  white-space: nowrap;
+  flex-shrink: 0;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ── Direct Messages ── */
 
 .dm-convs-list {
