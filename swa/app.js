@@ -225,7 +225,14 @@ for (const url of store.connectedRelayUrls) {
 store.on('signer', (signer) => {
   pubkeyDisplay.value = signer ? signer.pubkeyHex : '';
   updateIdentityUI();
-  if (isAnyConnected()) setupSubscriptions();
+  if (signer) {
+    for (const url of store.connectedRelayUrls) {
+      if (pool.has(url)) connectRelay(url);
+    }
+    if (isAnyConnected()) setupSubscriptions();
+  } else {
+    updateFeedTabs();
+  }
 });
 
 store.on('follows', (follows) => {
@@ -323,7 +330,6 @@ generateBtn.addEventListener('click', () => {
   privkeyDisplay.value = keys.privkeyHex;
   privkeyDisplayWrapper.hidden = false;
   importError.hidden = true;
-  securitySection.open = true;
 });
 
 importBtn.addEventListener('click', () => {
@@ -370,7 +376,6 @@ async function doGenerateMnemonic(btn, strength) {
     store.setSigner(new LocalSigner(keys));
     privkeyDisplayWrapper.hidden = true;
     showMnemonic(mnemonic);
-    securitySection.open = true;
   } catch (err) {
     generateError.textContent = err.message;
     generateError.hidden = false;
@@ -456,6 +461,25 @@ extensionLoginBtn.addEventListener('click', async () => {
 });
 
 logoutBtn.addEventListener('click', () => {
+  for (const url of store.relayUrls) pool.disconnect(url);
+  pool.clearActiveSubs();
+
+  store.clearEvents();
+  store.clearMentions();
+  store.setFollows([]);
+
+  dmConvsList.innerHTML = '';
+  currentDmContact = null;
+  dmThread.hidden = true;
+
+  profileNameInput.value = '';
+  profileAboutInput.value = '';
+  profilePictureInput.value = '';
+  profileIdentityInput.value = '';
+  profileResult.textContent = '';
+
+  feedStatus.textContent = 'Connect to a server to see events.';
+
   store.setSigner(null);
 });
 
