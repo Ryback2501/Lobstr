@@ -27,7 +27,7 @@ const copyPrivkeyBtn = document.getElementById('copy-privkey-btn');
 
 const mnemonicStrengthSelect = document.getElementById('mnemonic-strength');
 const generateMnemonicBtn = document.getElementById('generate-mnemonic-btn');
-const mnemonicSection = document.getElementById('mnemonic-section');
+const securitySection = document.getElementById('security-section');
 const mnemonicDisplayWrapper = document.getElementById('mnemonic-display-wrapper');
 const mnemonicDisplay = document.getElementById('mnemonic-display');
 const copyMnemonicBtn = document.getElementById('copy-mnemonic-btn');
@@ -87,6 +87,8 @@ const extensionLoginBtn = document.getElementById('extension-login-btn');
 const extensionError = document.getElementById('extension-error');
 const extensionBadge = document.getElementById('extension-badge');
 const logoutBtn = document.getElementById('logout-btn');
+
+const loginModal = document.getElementById('login-modal');
 
 const infoBtn = document.getElementById('info-btn');
 const infoModal = document.getElementById('info-modal');
@@ -313,7 +315,7 @@ generateBtn.addEventListener('click', () => {
   privkeyDisplay.value = keys.privkeyHex;
   privkeyDisplayWrapper.hidden = false;
   importError.hidden = true;
-  document.getElementById('privkey-section').open = true;
+  securitySection.open = true;
 });
 
 importBtn.addEventListener('click', () => {
@@ -348,7 +350,7 @@ generateMnemonicBtn.addEventListener('click', async () => {
     privkeyDisplayWrapper.hidden = true;
     importError.hidden = true;
     showMnemonic(mnemonic);
-    mnemonicSection.open = true;
+    securitySection.open = true;
   } catch (err) {
     mnemonicError.textContent = err.message;
     mnemonicError.hidden = false;
@@ -1246,13 +1248,10 @@ function requireKeysAndRelay(errorFn) {
 function updateIdentityUI() {
   const hasKeys = !!store.signer;
   const isExtension = store.signer instanceof ExtensionSigner;
-  logoutBtn.hidden = !hasKeys;
+  loginModal.hidden = hasKeys;
+  securitySection.hidden = !hasKeys;
   extensionBadge.hidden = !isExtension;
-  extensionLoginBtn.hidden = isExtension;
   extensionError.hidden = true;
-  document.getElementById('privkey-section').hidden = isExtension;
-  document.getElementById('mnemonic-section').hidden = isExtension;
-  document.getElementById('local-key-btn-row').hidden = isExtension;
 }
 
 async function handleDeleteEvent(event) {
