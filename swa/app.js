@@ -609,6 +609,8 @@ function removeRelay(url) {
 
 // ── Following ─────────────────────────────────────────────────────────────────
 
+followPubkeyInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') followBtn.click(); });
+
 followBtn.addEventListener('click', async () => {
   if (!requireKeysAndRelay(showFollowError)) return;
 
