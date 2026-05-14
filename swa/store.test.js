@@ -184,6 +184,33 @@ test('addEvent: keeps stored addressable event when timestamps tie and stored id
   assert.equal(store.events[0].id, 'a'.repeat(64));
 });
 
+// ── on / emit ─────────────────────────────────────────────────────────────────
+
+test('on: multiple listeners fire in registration order', () => {
+  const store = createStore(makeStorage(), makeStorage());
+  const calls = [];
+  store.on('events', () => calls.push('first'));
+  store.on('events', () => calls.push('second'));
+  store.clearEvents();
+  assert.deepEqual(calls, ['first', 'second']);
+});
+
+test('on: listeners are isolated per event name', () => {
+  const store = createStore(makeStorage(), makeStorage());
+  const eventsCalls = [];
+  const mentionsCalls = [];
+  store.on('events', () => eventsCalls.push(1));
+  store.on('mentions', () => mentionsCalls.push(1));
+  store.clearEvents();
+  assert.equal(eventsCalls.length, 1);
+  assert.equal(mentionsCalls.length, 0);
+});
+
+test('on: emitting with no listeners does not throw', () => {
+  const store = createStore(makeStorage(), makeStorage());
+  assert.doesNotThrow(() => store.clearEvents());
+});
+
 // ── removeEvent ───────────────────────────────────────────────────────────────
 
 test('removeEvent: removes by id and emits eventRemoved', () => {
