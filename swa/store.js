@@ -34,13 +34,6 @@ export function createStore(ls, ss) {
     listeners.get(event).push(fn);
   }
 
-  function off(event, fn) {
-    const fns = listeners.get(event);
-    if (!fns) return;
-    const idx = fns.indexOf(fn);
-    if (idx !== -1) fns.splice(idx, 1);
-  }
-
   function emit(event, data) {
     listeners.get(event)?.forEach(fn => {
       try { fn(data); } catch (err) { console.error(`store listener error [${event}]:`, err); }
@@ -56,7 +49,6 @@ export function createStore(ls, ss) {
     followedPubkeys: new Set(),
 
     on,
-    off,
 
     setSigner(signer) {
       this.signer = signer;
