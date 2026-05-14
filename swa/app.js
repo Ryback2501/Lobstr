@@ -202,7 +202,7 @@ const savedPrivkey = sessionStorage.getItem('privkeyHex');
 if (savedPrivkey) {
   try {
     const keys = importPrivkey(savedPrivkey);
-    store.signer = new LocalSigner(keys); // set directly — no emit needed at startup
+    store.setSigner(new LocalSigner(keys));
     pubkeyDisplay.value = keys.pubkeyHex;
   } catch {
     sessionStorage.removeItem('privkeyHex');
