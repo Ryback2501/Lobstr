@@ -241,7 +241,7 @@ store.on('follows', (follows) => {
   followsStatus.textContent = follows.length === 0 ? 'Not following anyone yet.' : '';
   renderFollows(follows);
   updateFeedTabs();
-  if (feedActiveTab === 'following') {
+  if (feedActiveTab === 'following' && store.signer && isAnyConnected()) {
     subscribeToFeed();
   }
 });
