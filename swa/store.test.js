@@ -391,6 +391,25 @@ test('addMention: deduplicates by id', () => {
   assert.equal(store.mentions.length, 1);
 });
 
+test('removeMention: removes mention by id and emits', () => {
+  const store = createStore(makeStorage(), makeStorage());
+  const fired = [];
+  store.on('mentions', (m) => fired.push(m.length));
+  const e = makeEvent({ kind: 1 });
+  store.addMention(e);
+  store.removeMention(e.id);
+  assert.equal(store.mentions.length, 0);
+  assert.equal(fired.at(-1), 0);
+});
+
+test('removeMention: noop for unknown id', () => {
+  const store = createStore(makeStorage(), makeStorage());
+  const e = makeEvent({ kind: 1 });
+  store.addMention(e);
+  store.removeMention('z'.repeat(64));
+  assert.equal(store.mentions.length, 1);
+});
+
 test('clearMentions: empties and emits', () => {
   const store = createStore(makeStorage(), makeStorage());
   const called = [];
