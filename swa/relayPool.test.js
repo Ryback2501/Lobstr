@@ -6,6 +6,11 @@ function makeConnectionClass() {
   const instances = [];
   function MockConnection(url, callbacks) {
     this.url = url;
+    this.onStatus = callbacks.onStatus || (() => {});
+    this.onEvent = callbacks.onEvent;
+    this.onEOSE = callbacks.onEOSE;
+    this.onClosed = callbacks.onClosed;
+    this.onNotice = callbacks.onNotice;
     this.callbacks = callbacks;
     this.connectCalled = false;
     this.disconnectCalled = false;
@@ -21,7 +26,7 @@ function makeConnectionClass() {
   };
   MockConnection.prototype.disconnect = function () {
     this.disconnectCalled = true;
-    this.callbacks.onStatus?.('disconnected');
+    this.onStatus('disconnected');
   };
   MockConnection.prototype.subscribe = function (subId, filters) {
     this.subscribeCalls.push({ subId, filters });
@@ -36,7 +41,7 @@ function makeConnectionClass() {
     return Promise.resolve(next ?? 'ok');
   };
   MockConnection.prototype.fireStatus = function (status) {
-    this.callbacks.onStatus?.(status);
+    this.onStatus(status);
   };
   MockConnection.instances = instances;
   return MockConnection;
@@ -117,6 +122,40 @@ test('connect: noop if already connecting', () => {
   Mock.instances[0].fireStatus('connecting');
   pool.connect('wss://a.example'); // second call while connecting
   assert.equal(Mock.instances.length, 1); // only one connection created
+});
+
+test('disconnect: fires onStatus disconnected synchronously', () => {
+  const Mock = makeConnectionClass();
+  const statusCalls = [];
+  const pool = new RelayPool({
+    connectionClass: Mock,
+    onStatus: (url, status, wasAnyConnected) => statusCalls.push({ url, status, wasAnyConnected }),
+  });
+  pool.add('wss://a.example');
+  pool.connect('wss://a.example');
+  Mock.instances[0].fireStatus('connected');
+  const beforeLen = statusCalls.length;
+  pool.disconnect('wss://a.example');
+  assert.equal(statusCalls.length, beforeLen + 1);
+  assert.equal(statusCalls.at(-1).status, 'disconnected');
+  assert.equal(statusCalls.at(-1).url, 'wss://a.example');
+});
+
+test('disconnect: silences late status events from the closed connection', () => {
+  const Mock = makeConnectionClass();
+  const statusCalls = [];
+  const pool = new RelayPool({
+    connectionClass: Mock,
+    onStatus: (url, status) => statusCalls.push({ url, status }),
+  });
+  pool.add('wss://a.example');
+  pool.connect('wss://a.example');
+  const conn = Mock.instances[0];
+  conn.fireStatus('connected');
+  pool.disconnect('wss://a.example');
+  const lenAfterDisconnect = statusCalls.length;
+  conn.fireStatus('disconnected'); // simulates late ws.onclose
+  assert.equal(statusCalls.length, lenAfterDisconnect);
 });
 
 test('disconnect: calls conn.disconnect and nulls conn', () => {
