@@ -127,6 +127,29 @@ header .subtitle {
   padding-bottom: 1rem;
 }
 
+#login-modal.modal-overlay {
+  background: var(--bg);
+}
+
+.login-title {
+  font-size: 1.75rem !important;
+  letter-spacing: -0.02em !important;
+  text-align: center;
+  margin-bottom: 1.5rem !important;
+}
+
+.login-btn-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.login-choice-btn {
+  width: 100%;
+  white-space: normal;
+  text-align: center;
+}
+
 .modal-nips-section {
   flex-shrink: 1;
   min-height: 5rem;
