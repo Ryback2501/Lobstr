@@ -25,8 +25,6 @@ const generateBtn = document.getElementById('generate-btn');
 const copyPubkeyBtn = document.getElementById('copy-pubkey-btn');
 const copyPrivkeyBtn = document.getElementById('copy-privkey-btn');
 
-const mnemonicStrengthSelect = document.getElementById('mnemonic-strength');
-const generateMnemonicBtn = document.getElementById('generate-mnemonic-btn');
 const securitySection = document.getElementById('security-section');
 const mnemonicDisplayWrapper = document.getElementById('mnemonic-display-wrapper');
 const mnemonicDisplay = document.getElementById('mnemonic-display');
@@ -89,6 +87,16 @@ const extensionBadge = document.getElementById('extension-badge');
 const logoutBtn = document.getElementById('logout-btn');
 
 const loginModal = document.getElementById('login-modal');
+const loginBtnList = document.getElementById('login-btn-list');
+const usePrivkeyBtn = document.getElementById('use-privkey-btn');
+const privkeySubview = document.getElementById('privkey-subview');
+const privkeyCancelBtn = document.getElementById('privkey-cancel-btn');
+const useMnemonicBtn = document.getElementById('use-mnemonic-btn');
+const mnemonicSubview = document.getElementById('mnemonic-subview');
+const mnemonicCancelBtn = document.getElementById('mnemonic-cancel-btn');
+const generateMnemonic12Btn = document.getElementById('generate-mnemonic-12-btn');
+const generateMnemonic24Btn = document.getElementById('generate-mnemonic-24-btn');
+const generateError = document.getElementById('generate-error');
 
 const infoBtn = document.getElementById('info-btn');
 const infoModal = document.getElementById('info-modal');
@@ -338,26 +346,41 @@ copyPrivkeyBtn.addEventListener('click', () => copyToClipboard(privkeyDisplay.va
 
 // ── Mnemonic seed phrase ──────────────────────────────────────────────────────
 
-generateMnemonicBtn.addEventListener('click', async () => {
-  generateMnemonicBtn.disabled = true;
+usePrivkeyBtn.addEventListener('click', () => {
+  loginBtnList.hidden = true;
+  privkeySubview.hidden = false;
+});
+
+privkeyCancelBtn.addEventListener('click', () => showLoginBtns());
+
+useMnemonicBtn.addEventListener('click', () => {
+  loginBtnList.hidden = true;
+  mnemonicSubview.hidden = false;
+});
+
+mnemonicCancelBtn.addEventListener('click', () => showLoginBtns());
+
+async function doGenerateMnemonic(btn, strength) {
+  btn.disabled = true;
+  generateError.hidden = true;
   try {
-    const strength = parseInt(mnemonicStrengthSelect.value);
     const mnemonic = generateMnemonic(strength);
     const { privkeyHex } = await deriveNostrKeypair(mnemonic);
     const keys = importPrivkey(privkeyHex);
-    const signer = new LocalSigner(keys);
-    store.setSigner(signer);
+    store.setSigner(new LocalSigner(keys));
     privkeyDisplayWrapper.hidden = true;
-    importError.hidden = true;
     showMnemonic(mnemonic);
     securitySection.open = true;
   } catch (err) {
-    mnemonicError.textContent = err.message;
-    mnemonicError.hidden = false;
+    generateError.textContent = err.message;
+    generateError.hidden = false;
   } finally {
-    generateMnemonicBtn.disabled = false;
+    btn.disabled = false;
   }
-});
+}
+
+generateMnemonic12Btn.addEventListener('click', () => doGenerateMnemonic(generateMnemonic12Btn, 128));
+generateMnemonic24Btn.addEventListener('click', () => doGenerateMnemonic(generateMnemonic24Btn, 256));
 
 mnemonicImportBtn.addEventListener('click', async () => {
   const mnemonic = mnemonicImport.value.trim().toLowerCase().replace(/\s+/g, ' ');
@@ -1245,6 +1268,18 @@ function requireKeysAndRelay(errorFn) {
   return true;
 }
 
+function showLoginBtns() {
+  loginBtnList.hidden = false;
+  privkeySubview.hidden = true;
+  mnemonicSubview.hidden = true;
+  importError.hidden = true;
+  mnemonicError.hidden = true;
+  generateError.hidden = true;
+  extensionError.hidden = true;
+  privkeyImport.value = '';
+  mnemonicImport.value = '';
+}
+
 function updateIdentityUI() {
   const hasKeys = !!store.signer;
   const isExtension = store.signer instanceof ExtensionSigner;
@@ -1252,6 +1287,7 @@ function updateIdentityUI() {
   securitySection.hidden = !hasKeys;
   extensionBadge.hidden = !isExtension;
   extensionError.hidden = true;
+  if (!hasKeys) showLoginBtns();
 }
 
 async function handleDeleteEvent(event) {

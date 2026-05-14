@@ -17,40 +17,45 @@
 
   <div id="login-modal" class="modal-overlay">
     <div class="modal login-modal-card" role="dialog" aria-modal="true" aria-label="Login">
-      <h2>Lobstr</h2>
+      <h2 class="login-title">Lobstr</h2>
 
       <section class="login-section">
         <h3>Login</h3>
-        <div class="input-row">
-          <input id="privkey-import" type="password" placeholder="64-char hex private key" autocomplete="off">
-          <button id="import-btn">Login</button>
+
+        <div id="login-btn-list" class="login-btn-list">
+          <button id="use-privkey-btn" class="login-choice-btn">Use private key</button>
+          <button id="use-mnemonic-btn" class="login-choice-btn">Import from mnemonic</button>
+          <button id="extension-login-btn" class="login-choice-btn">Login with extension</button>
+          <div id="extension-error" class="error-msg" hidden></div>
         </div>
-        <div id="import-error" class="error-msg" hidden></div>
-        <div class="field-group" style="margin-top: 0.75rem;">
-          <textarea id="mnemonic-import" rows="2" placeholder="Enter 12 or 24 words separated by spaces"></textarea>
-          <div id="mnemonic-error" class="error-msg" hidden></div>
-          <div class="btn-row">
-            <button id="mnemonic-import-btn">Import from mnemonic</button>
+
+        <div id="privkey-subview" hidden>
+          <input id="privkey-import" type="password" placeholder="64-char hex private key" autocomplete="off" style="width: 100%; box-sizing: border-box;">
+          <div id="import-error" class="error-msg" hidden></div>
+          <div class="login-btn-list" style="margin-top: 0.75rem;">
+            <button id="import-btn" class="login-choice-btn primary">Login</button>
+            <button id="privkey-cancel-btn" class="login-choice-btn">Cancel</button>
           </div>
         </div>
-        <div style="margin-top: 0.75rem;">
-          <button id="extension-login-btn">Login with extension</button>
-          <div id="extension-error" class="error-msg" hidden></div>
+
+        <div id="mnemonic-subview" hidden>
+          <textarea id="mnemonic-import" rows="2" placeholder="Enter 12 or 24 words separated by spaces" style="width: 100%; box-sizing: border-box;"></textarea>
+          <div id="mnemonic-error" class="error-msg" hidden></div>
+          <div class="login-btn-list" style="margin-top: 0.75rem;">
+            <button id="mnemonic-import-btn" class="login-choice-btn primary">Login</button>
+            <button id="mnemonic-cancel-btn" class="login-choice-btn">Cancel</button>
+          </div>
         </div>
       </section>
 
       <section class="login-section">
         <h3>Create identity</h3>
-        <div class="btn-row">
-          <button id="generate-btn" class="primary">Generate new keypair</button>
+        <div class="login-btn-list">
+          <button id="generate-btn" class="login-choice-btn">Generate new key pair</button>
+          <button id="generate-mnemonic-12-btn" class="login-choice-btn">Generate 12 word mnemonic</button>
+          <button id="generate-mnemonic-24-btn" class="login-choice-btn">Generate 24 word mnemonic</button>
         </div>
-        <div class="btn-row" style="margin-top: 0.5rem;">
-          <select id="mnemonic-strength">
-            <option value="128">12 words</option>
-            <option value="256">24 words</option>
-          </select>
-          <button id="generate-mnemonic-btn">Generate from mnemonic</button>
-        </div>
+        <div id="generate-error" class="error-msg" hidden style="margin-top: 0.5rem;"></div>
       </section>
     </div>
   </div>
