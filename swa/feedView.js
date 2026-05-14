@@ -1,6 +1,3 @@
-// Pure render functions for feed, replies, and follow items.
-// Functions receive data slices and return DOM nodes — they never read from store directly.
-
 import { resolveReplyTag } from './threading.js';
 
 const OTS_VERIFY_URL = 'https://opentimestamps.org';
@@ -129,12 +126,6 @@ export function createAvatar(profile, displayName, pubkey) {
   return avatar;
 }
 
-/**
- * Renders a feed event card.
- * @param {object} event - The Nostr event.
- * @param {object} slice - { signer, profiles, verifiedIdentities, attestations, followedPubkeys, events }
- * @param {object} callbacks - { onFollow, onReply, onShowReplies, onDelete, onScrollToParent, onQuote }
- */
 export function renderEvent(event, slice, callbacks) {
   const { signer, profiles, verifiedIdentities, attestations, followedPubkeys, events } = slice;
   const { onFollow, onReply, onShowReplies, onDelete, onScrollToParent, onQuote } = callbacks;
@@ -382,11 +373,6 @@ function createQuoteForm(quotedEvent, onQuote) {
   return form;
 }
 
-/**
- * Renders a reply card (compact, no actions).
- * @param {object} event - The Nostr event.
- * @param {object} slice - { profiles, verifiedIdentities }
- */
 export function renderReply(event, slice) {
   const { profiles, verifiedIdentities } = slice;
   const card = document.createElement('div');
@@ -420,14 +406,6 @@ export function renderReply(event, slice) {
   return card;
 }
 
-/**
- * Renders a follow list item.
- * @param {object} f - Follow entry { pubkey, relay, petname }
- * @param {object} slice - { profiles, verifiedIdentities }
- * @param {object} callbacks - { onUnfollow, onPetnameChange, onRelayChange }
- *   onPetnameChange(f, newValue) — called only when value changed; app validates
- *   onRelayChange(f, newValue)   — called only when value changed; returns false to revert input
- */
 export function renderFollowItem(f, slice, callbacks) {
   const { profiles, verifiedIdentities } = slice;
   const { onUnfollow, onPetnameChange, onRelayChange } = callbacks;
