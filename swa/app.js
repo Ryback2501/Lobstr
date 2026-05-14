@@ -638,10 +638,17 @@ followBtn.addEventListener('click', async () => {
 
 async function handleUnfollow(pubkey) {
   store.removeFollow(pubkey);
+  let msg = 'Unfollowed.';
   try {
     await publishFollowList();
   } catch {
-    // Ignore relay error for unfollow
+    msg = 'Unfollowed locally — relay error.';
+  }
+  if (store.follows.length > 0) {
+    followsStatus.textContent = msg;
+    setTimeout(() => {
+      if (followsStatus.textContent === msg) followsStatus.textContent = '';
+    }, 2000);
   }
 }
 
