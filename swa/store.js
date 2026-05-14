@@ -164,6 +164,7 @@ export function createStore(ls, ss) {
     addMention(event) {
       if (this.mentions.some(e => e.id === event.id)) return;
       sortedInsert(this.mentions, event);
+      if (this.mentions.length > MAX_EVENTS) this.mentions.length = MAX_EVENTS;
       emit('mentions', this.mentions);
     },
 
@@ -185,6 +186,7 @@ export function createStore(ls, ss) {
     addDm(event) {
       if (this.dms.some(e => e.id === event.id)) return;
       sortedInsert(this.dms, event);
+      if (this.dms.length > MAX_EVENTS) this.dms.length = MAX_EVENTS;
       emit('dm', event);
     },
 
