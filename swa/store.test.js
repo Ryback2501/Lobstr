@@ -211,6 +211,21 @@ test('on: emitting with no listeners does not throw', () => {
   assert.doesNotThrow(() => store.clearEvents());
 });
 
+test('emit: a throwing listener does not block subsequent listeners', () => {
+  const store = createStore(makeStorage(), makeStorage());
+  const calls = [];
+  const originalError = console.error;
+  console.error = () => {};
+  try {
+    store.on('events', () => { throw new Error('boom'); });
+    store.on('events', () => calls.push('survived'));
+    store.clearEvents();
+  } finally {
+    console.error = originalError;
+  }
+  assert.deepEqual(calls, ['survived']);
+});
+
 // ── removeEvent ───────────────────────────────────────────────────────────────
 
 test('removeEvent: removes by id and emits eventRemoved', () => {
