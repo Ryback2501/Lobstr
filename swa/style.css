@@ -131,6 +131,10 @@ header .subtitle {
   background: var(--bg);
 }
 
+body.login-modal-open {
+  overflow: hidden;
+}
+
 .login-title {
   font-size: 1.75rem !important;
   letter-spacing: -0.02em !important;
