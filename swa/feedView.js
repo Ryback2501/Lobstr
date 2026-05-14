@@ -140,9 +140,24 @@ export function createAvatar(profile, displayName, pubkey) {
   return avatar;
 }
 
+export function createQuoteEmbed(quotedEvent, profile, verifiedIdentities) {
+  const embed = renderReply(quotedEvent, { profiles: new Map([[quotedEvent.pubkey, profile]]), verifiedIdentities });
+  embed.classList.add('quote-embed');
+  embed.dataset.quoteId = quotedEvent.id;
+  return embed;
+}
+
+export function createQuotePlaceholder(quotedId) {
+  const placeholder = document.createElement('div');
+  placeholder.className = 'quote-embed quote-embed--pending';
+  placeholder.dataset.quoteId = quotedId;
+  placeholder.textContent = 'Loading quoted post…';
+  return placeholder;
+}
+
 export function renderEvent(event, slice, callbacks) {
-  const { signer, profiles, verifiedIdentities, attestations, followedPubkeys, events } = slice;
-  const { onFollow, onReply, onShowReplies, onDelete, onScrollToParent, onQuote } = callbacks;
+  const { signer, profiles, verifiedIdentities, attestations, followedPubkeys, events, quotedEvents } = slice;
+  const { onFollow, onReply, onShowReplies, onDelete, onScrollToParent, onQuote, onQuoteSeen } = callbacks;
 
   const card = document.createElement('div');
   card.className = 'event-card';
@@ -202,6 +217,18 @@ export function renderEvent(event, slice, callbacks) {
   const content = document.createElement('div');
   content.className = 'event-content';
   content.appendChild(renderMentionContent(event.content, event.tags, profiles));
+
+  const qTag = event.tags.find(t => t[0] === 'q' && t[1]);
+  if (qTag) {
+    const quotedId = qTag[1];
+    const quoted = quotedEvents?.get(quotedId) || events.find(e => e.id === quotedId);
+    if (quoted) {
+      content.appendChild(createQuoteEmbed(quoted, profiles.get(quoted.pubkey), verifiedIdentities));
+    } else {
+      content.appendChild(createQuotePlaceholder(quotedId));
+      onQuoteSeen?.(quotedId);
+    }
+  }
 
   const actions = document.createElement('div');
   actions.className = 'event-actions';

@@ -793,6 +793,20 @@ details[open] > summary::before {
   word-break: break-word;
 }
 
+.quote-embed {
+  margin-top: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.6rem 0.75rem;
+  background: var(--surface2);
+}
+
+.quote-embed--pending {
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-style: italic;
+}
+
 .reply-form-actions {
   display: flex;
   align-items: center;

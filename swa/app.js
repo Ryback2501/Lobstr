@@ -12,7 +12,7 @@ import { getDmContact, aggregateDmContacts } from './dms.js';
 import { renderDmConvItem, renderDmThreadTitle, renderDmMessage } from './dmView.js';
 import {
   renderEvent, renderReply, renderFollowItem,
-  createOtsBadge,
+  createOtsBadge, createQuoteEmbed,
 } from './feedView.js';
 const SUPPORTED_SPECS = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10'];
 
@@ -149,6 +149,9 @@ let dmSubId = null;
 let currentDmContact = null; // pubkey of the open DM thread
 const identityVerifyAttempted = new Set(); // pubkeys already attempted (verified or failed)
 let feedRetryTimer = null;
+const pendingQuoteIds = new Set();
+let quoteFetchDebounceTimer = null;
+let quoteFetchSubId = null;
 let sinceFilter = 0; // seconds offset from now; 0 = no filter
 let untilFilter = 0; // seconds offset from now; 0 = no filter
 let feedActiveTab = 'feed'; // 'feed' | 'following' | 'mentions'
@@ -311,6 +314,16 @@ store.on('dmDecrypted', (eventId) => {
 store.on('eventRemoved', (eventId) => {
   eventsList.querySelector(`[data-event-id="${eventId}"]`)?.remove();
   mentionsList.querySelector(`[data-event-id="${eventId}"]`)?.remove();
+});
+
+store.on('quotedEvent', (eventId) => {
+  const event = store.quotedEvents.get(eventId);
+  if (!event) return;
+  if (!verifyEvent(event)) return;
+  const profile = store.profiles.get(event.pubkey);
+  for (const placeholder of document.querySelectorAll(`[data-quote-id="${eventId}"]`)) {
+    placeholder.replaceWith(createQuoteEmbed(event, profile, store.verifiedIdentities));
+  }
 });
 
 store.on('relayInfo', (url) => {
@@ -476,6 +489,7 @@ logoutBtn.addEventListener('click', () => {
   store.clearProfiles();
   store.clearVerifiedIdentities();
   store.clearRelayInfos();
+  store.clearQuotedEvents();
   store.setFollows([]);
 
   dmConvsList.innerHTML = '';
@@ -1356,7 +1370,34 @@ function makeStoreSlice() {
     attestations: store.attestations,
     followedPubkeys: store.followedPubkeys,
     events: store.events,
+    quotedEvents: store.quotedEvents,
   };
+}
+
+function requestQuotedEvent(quotedId) {
+  if (store.quotedEvents.has(quotedId)) return;
+  if (store.events.some(e => e.id === quotedId)) return;
+  if (pendingQuoteIds.has(quotedId)) return;
+  pendingQuoteIds.add(quotedId);
+  clearTimeout(quoteFetchDebounceTimer);
+  quoteFetchDebounceTimer = setTimeout(flushPendingQuotes, 200);
+}
+
+function flushPendingQuotes() {
+  if (pendingQuoteIds.size === 0 || !isAnyConnected()) return;
+  const ids = [...pendingQuoteIds];
+  pendingQuoteIds.clear();
+  if (quoteFetchSubId) unsubscribeAll(quoteFetchSubId);
+  quoteFetchSubId = crypto.randomUUID();
+  subIdHandlers.set(quoteFetchSubId, (event) => {
+    if (ids.includes(event.id)) store.addQuotedEvent(event);
+  });
+  subIdEOSEHandlers.set(quoteFetchSubId, () => {
+    if (quoteFetchSubId) unsubscribeAll(quoteFetchSubId);
+    quoteFetchSubId = null;
+  });
+  subIdClosedHandlers.set(quoteFetchSubId, (url, msg) => showSubClosedNotice(url, 'quotes', msg));
+  subscribeAll(quoteFetchSubId, [{ ids }]);
 }
 
 function makeRenderCallbacks() {
@@ -1421,6 +1462,7 @@ function makeRenderCallbacks() {
       }
     },
     onDelete: handleDeleteEvent,
+    onQuoteSeen: requestQuotedEvent,
     onScrollToParent: (eventId) => {
       const card = eventsList.querySelector(`[data-event-id="${eventId}"]`);
       if (!card) return;

@@ -210,6 +210,19 @@ export function createStore(ls, ss) {
       emit('dmDecrypted', eventId);
     },
 
+    quotedEvents: new Map(),
+
+    addQuotedEvent(event) {
+      if (this.quotedEvents.has(event.id)) return;
+      this.quotedEvents.set(event.id, event);
+      emit('quotedEvent', event.id);
+    },
+
+    clearQuotedEvents() {
+      this.quotedEvents = new Map();
+      emit('quotedEventsCleared');
+    },
+
     setFollows(entries) {
       this.follows = entries;
       this.followedPubkeys = new Set(entries.map(f => f.pubkey));
