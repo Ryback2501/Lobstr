@@ -232,6 +232,7 @@ store.on('signer', (signer) => {
     }
     if (isAnyConnected()) setupSubscriptions();
   } else {
+    identityVerifyAttempted.clear();
     updateFeedTabs();
   }
 });
