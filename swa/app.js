@@ -332,6 +332,8 @@ generateBtn.addEventListener('click', () => {
   importError.hidden = true;
 });
 
+privkeyImport.addEventListener('keydown', (e) => { if (e.key === 'Enter') importBtn.click(); });
+
 importBtn.addEventListener('click', () => {
   const hex = privkeyImport.value.trim();
   try {
