@@ -1,9 +1,21 @@
 name: PR dev to main
 
+# Fires on the release PR from dev into main. Confirms the source is dev, that dev
+# contains all of main, runs the version gate against swa/version.js, runs CI,
+# then fast-forwards main to dev's SHA (requires the GH_PAT secret). Generalized
+# from Mockscii. The version-read step is the only stack-specific surface.
+
 on:
   pull_request:
     types: [opened, synchronize, reopened]
     branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-dev-to-main-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   check-source:
@@ -26,59 +38,55 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Verify dev is not missing commits from main
+      - name: rev-list count origin/dev..origin/main must be 0
         run: |
           git fetch origin dev main
           BEHIND=$(git rev-list --count origin/dev..origin/main)
           if [ "$BEHIND" -ne 0 ]; then
             echo "error: dev is missing $BEHIND commit(s) from main."
-            echo "Merge main into dev before opening this PR."
+            echo "Merge main into dev via a chore/* PR before opening this PR."
             exit 1
           fi
-          echo "dev contains all commits from main."
+          echo "dev contains all of main."
 
   version-gate:
-    name: Version check
+    name: Version gate
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Read version
+      - name: Read version from swa/version.js
         id: version
         run: |
           VERSION=$(grep -oP "(?<=')[0-9]+\.[0-9]+\.[0-9]+(?=')" swa/version.js)
+          if ! printf '%s' "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "error: could not parse a semver version from swa/version.js"
+            exit 1
+          fi
           echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Version: $VERSION"
-      - name: Get latest release tag
-        id: latest
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          LATEST=$(gh release list --limit 1 --json tagName --jq '.[0].tagName // ""')
-          LATEST="${LATEST#v}"
-          echo "LATEST=$LATEST" >> "$GITHUB_OUTPUT"
-          echo "Latest release: ${LATEST:-none}"
-      - name: Tag must not already exist
+      - name: Tag v$VERSION must not exist
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
           git fetch --tags
-          if git tag --list "v${VERSION}" | grep -q .; then
-            echo "error: tag v${VERSION} already exists — bump VERSION before merging."
+          if git tag --list "v$VERSION" | grep -q .; then
+            echo "error: tag v$VERSION already exists — bump the version on a work branch first."
             exit 1
           fi
-      - name: New version must be strictly greater than latest release
+      - name: Version must be strictly greater than latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
-          LATEST="${{ steps.latest.outputs.LATEST }}"
+          LATEST=$(gh release list --limit 1 --json tagName --jq '.[0].tagName // ""')
+          LATEST="${LATEST#v}"
           if [ -z "$LATEST" ]; then
             echo "No previous release — accepting $VERSION as first release."
             exit 0
           fi
-          HIGHER=$(printf '%s\n%s\n' "$LATEST" "$VERSION" | sort -V | tail -1)
-          if [ "$HIGHER" = "$LATEST" ] || [ "$VERSION" = "$LATEST" ]; then
+          HIGHER=$(printf '%s\n%s\n' "$LATEST" "$VERSION" | sort -V | tail -n1)
+          if [ "$VERSION" = "$LATEST" ] || [ "$HIGHER" = "$LATEST" ]; then
             echo "error: VERSION ($VERSION) must be strictly greater than latest release ($LATEST)"
             exit 1
           fi
@@ -90,14 +98,14 @@ jobs:
     uses: ./.github/workflows/ci-jobs.yml
 
   auto-merge:
-    name: Fast-forward dev to main
+    name: Fast-forward main to dev
     needs: [ci]
     runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
     steps:
-      - name: Advance main to dev HEAD
+      - name: Advance main ref to dev SHA (requires GH_PAT)
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |

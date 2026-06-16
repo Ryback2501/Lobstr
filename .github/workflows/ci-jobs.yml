@@ -1,57 +1,128 @@
 name: CI jobs
 
+# Reusable CI. Called by pr-work-to-dev.yml and pr-dev-to-main.yml.
+# Each surviving job is wired into branch-protection's required checks.
+
 on:
-  workflow_call:
+  workflow_call: {}
+
+permissions:
+  contents: read
 
 jobs:
   lint:
-    name: Lint
+    name: lint
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - name: Lint JS files
-        run: |
-          npx --yes eslint@8 \
-            --ignore-pattern "swa/vendor/**" \
-            --ignore-pattern "browser/vendor/**" \
-            "swa/**/*.js" "browser/**/*.js"
-
-  test:
-    name: Test
-    runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
-          node-version: '22'
-      - name: Run unit tests
-        run: |
-          FILES=$(find swa browser -name "*.test.js" 2>/dev/null | tr '\n' ' ')
-          if [ -z "$FILES" ]; then
-            echo "No test files found — skipping."
-            exit 0
-          fi
-          node --test $FILES
+          node-version: 22
+      - run: "true"
+      - run: "make lint"
 
-  docker-smoke:
-    name: Docker smoke test
+  unit:
+    name: unit
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
-      - name: Build nginx image
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - run: "true"
+      - run: "make test"
+
+  # --- placeholder: no integration suite yet. Replace the run command when one
+  #     exists (e.g. `make integration`); passes trivially until then. ---
+  integration:
+    name: integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - run: "true"
+      - run: echo "no integration suite yet — wire a command here when one exists"
+
+  # --- placeholder: no e2e suite yet. Replace the run command when one exists
+  #     (e.g. `make e2e`); passes trivially until then. ---
+  e2e:
+    name: e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - run: "true"
+      - run: echo "no e2e suite yet — wire a command here when one exists"
+
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - run: "true"
+      - run: "true"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: build-output
+          path: swa
+
+  # --- optional: delete if the project ships no container image ---
+  docker:
+    name: docker
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build image
         run: docker build -t lobstr-swa:ci .
-      - name: Start container
-        run: docker run -d --name lobstr-ci -p 8080:80 lobstr-swa:ci
-      - name: Wait for nginx
+      - name: Run container
+        run: docker run -d --name lobstr-swa -p 8080:80 lobstr-swa:ci
+      - name: Healthcheck
         run: |
-          for i in $(seq 1 10); do
-            curl -sf http://localhost:8080/ && break
-            sleep 1
+          for i in $(seq 1 15); do
+            if curl -fsS http://localhost:8080/ >/dev/null; then
+              echo "container is serving"; exit 0
+            fi
+            sleep 2
           done
-      - name: Smoke test — expect HTTP 200
-        run: |
-          STATUS=$(curl -o /dev/null -s -w "%{http_code}" http://localhost:8080/)
-          [ "$STATUS" = "200" ] || { echo "Got HTTP $STATUS"; exit 1; }
+          echo "container did not become healthy"; docker logs lobstr-swa; exit 1
       - name: Stop container
         if: always()
-        run: docker rm -f lobstr-ci
+        run: docker rm -f lobstr-swa || true
+
+  # --- optional: secret + dependency scan. Toggled by the SECURITY_SCAN repo
+  #     variable (flip it on without editing this file). When enabled, kick-off
+  #     adds `CI / security` to the branch-protection required checks so a finding
+  #     blocks merge. Deterministic tooling — no LLM in the loop. ---
+  security:
+    name: security
+    runs-on: ubuntu-latest
+    if: vars.SECURITY_SCAN == 'true'
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Secret scan (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          # Personal accounts need no license; GitHub *orgs* require GITLEAKS_LICENSE.
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Dependency vulnerability audit
+        run: |
+          echo "no dependency audit (no package manager); gitleaks secret scan still runs"
