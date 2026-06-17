@@ -91,7 +91,32 @@
     </div>
   </div>
 
+  <div class="app-shell">
+  <nav id="sidebar" class="sidebar" aria-label="Sections" hidden>
+    <button type="button" class="sidebar-btn active" data-section="user" aria-label="User" title="User">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM5.5 20a6.5 6.5 0 0 1 13 0" />
+      </svg>
+    </button>
+    <button type="button" class="sidebar-btn" data-section="relays" aria-label="Relays" title="Relays">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4 6h16v4H4zM4 14h16v4H4z" />
+      </svg>
+    </button>
+    <button type="button" class="sidebar-btn" data-section="chats" aria-label="Chats" title="Chats">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H9l-4 4v-4H6a2 2 0 0 1-2-2z" />
+      </svg>
+    </button>
+    <button type="button" class="sidebar-btn" data-section="feeds" aria-label="Feeds" title="Feeds">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4 6h16M4 12h16M4 18h10" />
+      </svg>
+    </button>
+  </nav>
+
   <main>
+    <div class="section" data-section="user">
     <section id="keys-panel" class="panel">
       <h2>Identity</h2>
 
@@ -154,16 +179,6 @@
       </div>
     </section>
 
-    <section id="relay-panel" class="panel">
-      <h2>Relays</h2>
-      <div class="relay-add-row">
-        <input id="relay-add-input" type="text" placeholder="wss://relay.example.com" autocomplete="off">
-        <button id="relay-add-btn">Add</button>
-      </div>
-      <div id="relay-list"></div>
-      <div id="relay-notice" class="notice-msg" hidden></div>
-    </section>
-
     <section id="following-panel" class="panel">
       <h2>Following</h2>
       <div class="field-group">
@@ -176,7 +191,21 @@
       <div id="follows-status" class="feed-status">Connect with an identity to load your follow list.</div>
       <div id="follows-list" class="follows-list"></div>
     </section>
+    </div>
 
+    <div class="section" data-section="relays" hidden>
+    <section id="relay-panel" class="panel">
+      <h2>Relays</h2>
+      <div class="relay-add-row">
+        <input id="relay-add-input" type="text" placeholder="wss://relay.example.com" autocomplete="off">
+        <button id="relay-add-btn">Add</button>
+      </div>
+      <div id="relay-list"></div>
+      <div id="relay-notice" class="notice-msg" hidden></div>
+    </section>
+    </div>
+
+    <div class="section" data-section="chats" hidden>
     <section id="dm-panel" class="panel">
       <h2>Direct Messages</h2>
       <div id="dm-convs-list" class="dm-convs-list"></div>
@@ -203,7 +232,9 @@
         </div>
       </div>
     </section>
+    </div>
 
+    <div class="section" data-section="feeds" hidden>
     <section id="post-panel" class="panel">
       <h2>Post</h2>
       <div class="field-group">
@@ -246,7 +277,9 @@
       <div id="mentions-status" class="feed-status" hidden>No mentions yet.</div>
       <div id="mentions-list" hidden></div>
     </section>
+    </div>
   </main>
+  </div>
 
   <script type="module" src="app.js"></script>
 </body>
