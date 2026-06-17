@@ -15,8 +15,8 @@ test:
 	fi
 
 docker-build:
-	docker build -t lobstr-swa:local .
+	docker build -t lobstr:local .
 
 docker-run: docker-build
-	docker run -d --name lobstr-local -p 8080:80 lobstr-swa:local
+	docker run -d --name lobstr-local -p 8080:80 lobstr:local
 	@echo "Running at http://localhost:8080  |  stop: docker rm -f lobstr-local"

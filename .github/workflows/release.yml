@@ -92,7 +92,7 @@ jobs:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           VERSION: ${{ needs.read-version.outputs.version }}
         run: |
-          IMAGE="$DOCKERHUB_USERNAME/lobstr-swa"
+          IMAGE="$DOCKERHUB_USERNAME/lobstr"
           docker build -t "$IMAGE:$VERSION" -t "$IMAGE:latest" .
           docker push "$IMAGE:$VERSION"
           docker push "$IMAGE:latest"
