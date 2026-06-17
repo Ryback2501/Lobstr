@@ -98,6 +98,14 @@ jobs:
             sleep 2
           done
           echo "container did not become healthy"; docker logs lobstr; exit 1
+      - name: Verify .mjs is served as JavaScript
+        run: |
+          ct=$(curl -fsSI http://localhost:8080/vendor/secp256k1.mjs | tr -d '\r' | awk -F': ' 'tolower($1)=="content-type"{print $2}')
+          echo "vendor/secp256k1.mjs Content-Type: $ct"
+          case "$ct" in
+            *javascript*) echo "ok" ;;
+            *) echo "ERROR: .mjs not served as JavaScript (browsers will refuse the ES module)"; exit 1 ;;
+          esac
       - name: Stop container
         if: always()
         run: docker rm -f lobstr || true
