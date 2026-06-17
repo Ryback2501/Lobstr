@@ -1347,6 +1347,7 @@ function updateIdentityUI() {
   document.body.classList.toggle('login-modal-open', !hasKeys);
   securitySection.hidden = !hasKeys;
   sidebar.hidden = !hasKeys;
+  document.body.classList.toggle('signed-in', hasKeys);
   extensionBadge.hidden = !isExtension;
   extensionError.hidden = true;
   if (!hasKeys) {
