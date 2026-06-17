@@ -14,6 +14,7 @@ import {
   renderEvent, renderReply, renderFollowItem,
   createOtsBadge, createQuoteEmbed,
 } from './feedView.js';
+import { DEFAULT_SECTION, resolveSection } from './navigation.js';
 const SUPPORTED_SPECS = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11'];
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
@@ -181,6 +182,27 @@ for (const spec of SUPPORTED_SPECS) {
   badge.className = 'spec-badge';
   badge.textContent = spec;
   modalSpecsList.appendChild(badge);
+}
+
+// ── Sidebar section navigation ─────────────────────────────────────────────────
+
+const sidebar = document.getElementById('sidebar');
+const sidebarButtons = Array.from(sidebar.querySelectorAll('.sidebar-btn'));
+const contentSections = Array.from(document.querySelectorAll('main .section'));
+
+// Show one section group and mark its sidebar button active; hide the rest.
+function showSection(requested) {
+  const active = resolveSection(requested);
+  for (const section of contentSections) {
+    section.hidden = section.dataset.section !== active;
+  }
+  for (const button of sidebarButtons) {
+    button.classList.toggle('active', button.dataset.section === active);
+  }
+}
+
+for (const button of sidebarButtons) {
+  button.addEventListener('click', () => showSection(button.dataset.section));
 }
 
 infoBtn.addEventListener('click', () => { infoModal.hidden = false; });
@@ -1324,9 +1346,11 @@ function updateIdentityUI() {
   loginModal.hidden = hasKeys;
   document.body.classList.toggle('login-modal-open', !hasKeys);
   securitySection.hidden = !hasKeys;
+  sidebar.hidden = !hasKeys;
   extensionBadge.hidden = !isExtension;
   extensionError.hidden = true;
   if (!hasKeys) {
+    showSection(DEFAULT_SECTION);
     showLoginBtns();
     privkeyDisplay.value = '';
     privkeyDisplayWrapper.hidden = true;
