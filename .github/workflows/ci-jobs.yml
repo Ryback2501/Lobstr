@@ -86,9 +86,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Build image
-        run: docker build -t lobstr-swa:ci .
+        run: docker build -t lobstr:ci .
       - name: Run container
-        run: docker run -d --name lobstr-swa -p 8080:80 lobstr-swa:ci
+        run: docker run -d --name lobstr -p 8080:80 lobstr:ci
       - name: Healthcheck
         run: |
           for i in $(seq 1 15); do
@@ -97,10 +97,10 @@ jobs:
             fi
             sleep 2
           done
-          echo "container did not become healthy"; docker logs lobstr-swa; exit 1
+          echo "container did not become healthy"; docker logs lobstr; exit 1
       - name: Stop container
         if: always()
-        run: docker rm -f lobstr-swa || true
+        run: docker rm -f lobstr || true
 
   # --- optional: secret + dependency scan. Toggled by the SECURITY_SCAN repo
   #     variable (flip it on without editing this file). When enabled, kick-off
