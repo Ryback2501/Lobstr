@@ -326,17 +326,28 @@ body.login-modal-open {
 }
 
 .sidebar {
-  position: sticky;
-  top: 3rem;
-  flex-shrink: 0;
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 56px;
+  z-index: 40;
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 0.5rem;
-  padding: 1.5rem 0.5rem;
+  padding-top: 3.25rem;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
 }
 
 .sidebar[hidden] {
   display: none;
+}
+
+/* Reserve space for the fixed rail so content never slides under it. */
+body.signed-in .app-shell {
+  padding-left: 56px;
 }
 
 .sidebar-btn {
