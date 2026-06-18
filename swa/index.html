@@ -248,6 +248,14 @@
       </div>
       <div class="btn-row">
         <button id="post-btn" class="primary">Post</button>
+        <label class="pow-field">Proof of work
+          <select id="post-difficulty">
+            <option value="0">Off</option>
+            <option value="8">8 bits</option>
+            <option value="16">16 bits</option>
+            <option value="20">20 bits</option>
+          </select>
+        </label>
         <span id="post-result" class="result-msg"></span>
       </div>
     </section>
@@ -271,6 +279,12 @@
           <option value="3600">Until 1h ago</option>
           <option value="86400">Until 1d ago</option>
           <option value="604800">Until 1w ago</option>
+        </select>
+        <select id="feed-min-pow">
+          <option value="0">Any PoW</option>
+          <option value="8">≥ 8 bits</option>
+          <option value="16">≥ 16 bits</option>
+          <option value="20">≥ 20 bits</option>
         </select>
         <div class="input-row" style="flex:1">
           <input id="feed-id-search" type="text" placeholder="Find event by ID (64-char hex)" autocomplete="off">

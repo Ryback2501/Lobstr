@@ -37,6 +37,13 @@ test('LocalSigner: signEvent sets pubkey to own pubkeyHex', async () => {
   assert.equal(event.pubkey, ALICE_PUB);
 });
 
+test('LocalSigner: signEvent honours draft.created_at', async () => {
+  const signer = new LocalSigner({ privkeyHex: ALICE_PRIV, pubkeyHex: ALICE_PUB });
+  const event = await signer.signEvent(draft({ created_at: 1700000000 }));
+  assert.equal(event.created_at, 1700000000);
+  assert.equal(verifyEvent(event), true);
+});
+
 test('LocalSigner: signEvent preserves kind, tags, and content from draft', async () => {
   const signer = new LocalSigner({ privkeyHex: ALICE_PRIV, pubkeyHex: ALICE_PUB });
   const event = await signer.signEvent(draft({ kind: 3, tags: [['p', BOB_PUB]], content: 'follow' }));

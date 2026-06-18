@@ -145,6 +145,13 @@ test('createEvent: created_at is within 5 seconds of now', () => {
   assert.ok(Math.abs(event.created_at - now) <= 5);
 });
 
+test('createEvent: honours a supplied createdAt so the id is reproducible', () => {
+  const event = createEvent({ privkeyHex: ALICE_PRIV, pubkeyHex: ALICE_PUB, kind: 1, tags: [], content: 'hi', createdAt: 1700000000 });
+  assert.equal(event.created_at, 1700000000);
+  assert.equal(event.id, getEventId(serializeEvent(ALICE_PUB, 1700000000, 1, [], 'hi')));
+  assert.equal(verifyEvent(event), true);
+});
+
 test('createEvent: id and sig are 64-char hex strings', () => {
   const event = createEvent({ privkeyHex: ALICE_PRIV, pubkeyHex: ALICE_PUB, kind: 1, tags: [], content: '' });
   assert.match(event.id, /^[0-9a-f]{64}$/);

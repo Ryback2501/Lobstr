@@ -14,6 +14,7 @@ import {
   renderEvent, renderReply, renderFollowItem,
   createOtsBadge, createQuoteEmbed,
 } from './feedView.js';
+import { mineProofOfWork } from './proofOfWork.js';
 import { DEFAULT_SECTION, resolveSection } from './navigation.js';
 const SUPPORTED_SPECS = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11'];
 
@@ -59,11 +60,13 @@ const postContent = document.getElementById('post-content');
 const charCount = document.getElementById('char-count');
 const postBtn = document.getElementById('post-btn');
 const postResult = document.getElementById('post-result');
+const postDifficultySelect = document.getElementById('post-difficulty');
 
 const feedStatus = document.getElementById('feed-status');
 const eventsList = document.getElementById('events-list');
 const feedSinceSelect = document.getElementById('feed-since');
 const feedUntilSelect = document.getElementById('feed-until');
+const feedMinPowSelect = document.getElementById('feed-min-pow');
 const feedIdSearch = document.getElementById('feed-id-search');
 const feedIdSearchBtn = document.getElementById('feed-id-search-btn');
 const feedHeader = document.getElementById('feed-header');
@@ -155,6 +158,7 @@ let quoteFetchDebounceTimer = null;
 let quoteFetchSubId = null;
 let sinceFilter = 0; // seconds offset from now; 0 = no filter
 let untilFilter = 0; // seconds offset from now; 0 = no filter
+let minPowFilter = 0; // minimum leading-zero-bit difficulty; 0 = no filter
 let feedActiveTab = 'feed'; // 'feed' | 'following' | 'mentions'
 const replySubscriptions = new Map(); // eventId → { subId, container }
 const replySubIdToContainer = new Map(); // subId → container element
@@ -282,6 +286,7 @@ store.on('events', () => {
 store.on('eventAdded', ({ event, insertIdx }) => {
   feedStatus.textContent = '';
   const card = renderEvent(event, makeStoreSlice(), makeRenderCallbacks());
+  applyPowFilterToCard(card);
   const ref = eventsList.children[insertIdx];
   eventsList.insertBefore(card, ref ?? null);
   while (eventsList.children.length > store.events.length) {
@@ -569,6 +574,16 @@ feedUntilSelect.addEventListener('change', () => {
   if (isAnyConnected()) subscribeToFeed();
 });
 
+feedMinPowSelect.addEventListener('change', () => {
+  minPowFilter = parseInt(feedMinPowSelect.value) || 0;
+  for (const card of eventsList.children) applyPowFilterToCard(card);
+});
+
+postDifficultySelect.value = String(store.postDifficulty);
+postDifficultySelect.addEventListener('change', () => {
+  store.setPostDifficulty(parseInt(postDifficultySelect.value) || 0);
+});
+
 tabFeed.addEventListener('click', () => {
   if (feedActiveTab === 'feed') return;
   switchTab('feed');
@@ -752,11 +767,11 @@ postBtn.addEventListener('click', async () => {
   if (!content) return;
 
   postBtn.disabled = true;
-  setPostResult('Publishing…', '');
+  setPostResult(store.postDifficulty > 0 ? 'Mining proof of work…' : 'Publishing…', '');
 
   try {
     const { content: transformedContent, tags: mentionTags } = buildMentionEvent(content);
-    const event = await createOwnEvent({ kind: 1, tags: mentionTags, content: transformedContent });
+    const event = await createOwnEvent({ kind: 1, tags: mentionTags, content: transformedContent, difficulty: store.postDifficulty });
     await publishToAll(event);
     store.addEvent(event);
     postContent.value = '';
@@ -1279,11 +1294,17 @@ function closeRelayModal() {
 relayModalClose.addEventListener('click', closeRelayModal);
 relayInfoModal.addEventListener('click', (e) => { if (e.target === relayInfoModal) closeRelayModal(); });
 
+function applyPowFilterToCard(card) {
+  card.hidden = (parseInt(card.dataset.pow) || 0) < minPowFilter;
+}
+
 function rerenderFeed() {
   if (!store.events.length) return;
   eventsList.innerHTML = '';
   for (const event of store.events) {
-    eventsList.appendChild(renderEvent(event, makeStoreSlice(), makeRenderCallbacks()));
+    const card = renderEvent(event, makeStoreSlice(), makeRenderCallbacks());
+    applyPowFilterToCard(card);
+    eventsList.appendChild(card);
   }
 }
 
@@ -1294,7 +1315,11 @@ function updateCardsForPubkey(pubkey) {
     for (const oldCard of list.querySelectorAll(`[data-event-id]`)) {
       const eventId = oldCard.dataset.eventId;
       const event = store.events.find(e => e.id === eventId) || store.mentions.find(e => e.id === eventId);
-      if (event && event.pubkey === pubkey) oldCard.replaceWith(renderEvent(event, slice, callbacks));
+      if (event && event.pubkey === pubkey) {
+        const newCard = renderEvent(event, slice, callbacks);
+        if (list === eventsList) applyPowFilterToCard(newCard);
+        oldCard.replaceWith(newCard);
+      }
     }
   }
 }
@@ -1379,9 +1404,13 @@ function handleIncomingDeletion(deletionEvent) {
   }
 }
 
-async function createOwnEvent({ kind, tags, content }) {
+async function createOwnEvent({ kind, tags, content, difficulty = 0 }) {
   if (!store.signer) throw new Error('No identity loaded.');
-  return store.signer.signEvent({ created_at: Math.floor(Date.now() / 1000), kind, tags, content });
+  const createdAt = Math.floor(Date.now() / 1000);
+  const finalTags = difficulty > 0
+    ? mineProofOfWork({ pubkeyHex: store.signer.pubkeyHex, createdAt, kind, tags, content, difficulty })
+    : tags;
+  return store.signer.signEvent({ created_at: createdAt, kind, tags: finalTags, content });
 }
 
 function isValidRelayUrl(url) {
@@ -1452,6 +1481,7 @@ function makeRenderCallbacks() {
         kind: 1,
         tags: [...replyTags, ...mentionTags],
         content: transformedContent,
+        difficulty: store.postDifficulty,
       });
       await publishToAll(event);
       store.addEvent(event);
@@ -1516,6 +1546,7 @@ function makeRenderCallbacks() {
         kind: 1,
         tags: [qTag, pTag, ...mentionTags],
         content: transformedContent,
+        difficulty: store.postDifficulty,
       });
       await publishToAll(event);
       store.addEvent(event);

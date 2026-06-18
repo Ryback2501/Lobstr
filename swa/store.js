@@ -44,6 +44,7 @@ export function createStore(ls, ss) {
     signer: null,
     relayUrls: JSON.parse(safeLS.getItem('relayUrls') || '["wss://relay.damus.io"]'),
     connectedRelayUrls: new Set(JSON.parse(safeLS.getItem('connectedRelayUrls') || '[]')),
+    postDifficulty: parseInt(safeLS.getItem('postDifficulty')) || 0,
     events: [],
     follows: [],
     followedPubkeys: new Set(),
@@ -70,6 +71,11 @@ export function createStore(ls, ss) {
     setConnectedRelayUrls(urlSet) {
       this.connectedRelayUrls = urlSet;
       safeLS.setItem('connectedRelayUrls', JSON.stringify([...urlSet]));
+    },
+
+    setPostDifficulty(bits) {
+      this.postDifficulty = bits;
+      safeLS.setItem('postDifficulty', String(bits));
     },
 
     addEvent(event) {
