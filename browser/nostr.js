@@ -48,9 +48,8 @@ export function signEvent(eventIdHex, privkey) {
   return bytesToHex(schnorr.sign(hexToBytes(eventIdHex), privkey));
 }
 
-export function createEvent({ privkeyHex, pubkeyHex, kind = 1, tags = [], content }) {
+export function createEvent({ privkeyHex, pubkeyHex, kind = 1, tags = [], content, createdAt = Math.floor(Date.now() / 1000) }) {
   const privkey = hexToBytes(privkeyHex);
-  const createdAt = Math.floor(Date.now() / 1000);
   const serialized = serializeEvent(pubkeyHex, createdAt, kind, tags, content);
   const id = getEventId(serialized);
   const sig = signEvent(id, privkey);

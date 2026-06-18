@@ -1,4 +1,5 @@
 import { resolveReplyTag } from './threading.js';
+import { getEventDifficulty } from './proofOfWork.js';
 
 const OTS_VERIFY_URL = 'https://opentimestamps.org';
 
@@ -65,6 +66,14 @@ export function createUnverifiedBadge(identifier) {
   badge.className = 'unverified-badge';
   badge.textContent = '? ' + identifier;
   badge.title = `Unverified identity claim: ${identifier}. Verification is pending or failed.`;
+  return badge;
+}
+
+export function createPowBadge(difficulty) {
+  const badge = document.createElement('span');
+  badge.className = 'pow-badge';
+  badge.textContent = '⛏ ' + difficulty;
+  badge.title = `Proof of work: ${difficulty} leading zero bits`;
   return badge;
 }
 
@@ -162,6 +171,8 @@ export function renderEvent(event, slice, callbacks) {
   const card = document.createElement('div');
   card.className = 'event-card';
   card.dataset.eventId = event.id;
+  const difficulty = getEventDifficulty(event);
+  card.dataset.pow = difficulty;
 
   const meta = document.createElement('div');
   meta.className = 'event-meta';
@@ -186,6 +197,7 @@ export function renderEvent(event, slice, callbacks) {
   const idBadge = renderIdentityBadge(event.pubkey, profile, verifiedIdentities);
   if (idBadge) metaLeft.appendChild(idBadge);
   if (attestations.has(event.id)) metaLeft.appendChild(createOtsBadge(attestations.get(event.id).raw, event.id));
+  if (difficulty > 0) metaLeft.appendChild(createPowBadge(difficulty));
   meta.appendChild(metaLeft);
 
   if (!isOwnEvent(event, signer?.pubkeyHex)) {

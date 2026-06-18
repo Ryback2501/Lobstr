@@ -15,6 +15,7 @@ export class LocalSigner {
       kind: draft.kind,
       tags: draft.tags,
       content: draft.content,
+      createdAt: draft.created_at,
     });
   }
 
