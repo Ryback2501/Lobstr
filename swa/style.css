@@ -770,6 +770,14 @@ details[open] > summary::before {
   line-height: 1.55;
 }
 
+.event-subject {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 0.25rem;
+  word-break: break-word;
+}
+
 .mention {
   color: var(--accent);
   font-weight: 500;

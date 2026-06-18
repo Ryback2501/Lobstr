@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveReplyTag, buildReplyTags, buildMentionEvent, buildQuoteTag } from './threading.js';
+import { resolveReplyTag, buildReplyTags, buildMentionEvent, buildQuoteTag, getSubject, adornReplySubject } from './threading.js';
 
 const HEX_A = 'a'.repeat(64);
 const HEX_B = 'b'.repeat(64);
@@ -194,4 +194,40 @@ test('buildQuoteTag: includes provided relay hint', () => {
   const quoted = { id: HEX_A, pubkey: HEX_B };
   const tag = buildQuoteTag(quoted, 'wss://relay.example.com');
   assert.deepEqual(tag, ['q', HEX_A, 'wss://relay.example.com', HEX_B]);
+});
+
+// ── getSubject (NIP-14) ───────────────────────────────────────────────────────
+
+test('getSubject: returns the subject tag value', () => {
+  assert.equal(getSubject({ tags: [['subject', 'Hello world']] }), 'Hello world');
+});
+
+test('getSubject: returns empty string when no subject tag', () => {
+  assert.equal(getSubject({ tags: [['e', HEX_A]] }), '');
+});
+
+test('getSubject: returns empty string for empty tags', () => {
+  assert.equal(getSubject({ tags: [] }), '');
+});
+
+test('getSubject: returns the first subject tag when several exist', () => {
+  assert.equal(getSubject({ tags: [['subject', 'first'], ['subject', 'second']] }), 'first');
+});
+
+// ── adornReplySubject (NIP-14) ────────────────────────────────────────────────
+
+test('adornReplySubject: returns empty string for empty input', () => {
+  assert.equal(adornReplySubject(''), '');
+});
+
+test('adornReplySubject: prepends "Re: " to a plain subject', () => {
+  assert.equal(adornReplySubject('Lunch plans'), 'Re: Lunch plans');
+});
+
+test('adornReplySubject: leaves an already-prefixed subject unchanged', () => {
+  assert.equal(adornReplySubject('Re: Lunch plans'), 'Re: Lunch plans');
+});
+
+test('adornReplySubject: treats the prefix case-insensitively', () => {
+  assert.equal(adornReplySubject('RE: Lunch plans'), 'RE: Lunch plans');
 });

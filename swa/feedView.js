@@ -1,4 +1,4 @@
-import { resolveReplyTag } from './threading.js';
+import { resolveReplyTag, getSubject, adornReplySubject } from './threading.js';
 import { getEventDifficulty } from './proofOfWork.js';
 
 const OTS_VERIFY_URL = 'https://opentimestamps.org';
@@ -275,6 +275,14 @@ export function renderEvent(event, slice, callbacks) {
     actions.appendChild(deleteBtn);
   }
 
+  const subject = getSubject(event);
+  if (subject) {
+    const subjectEl = document.createElement('div');
+    subjectEl.className = 'event-subject';
+    subjectEl.textContent = subject;
+    card.appendChild(subjectEl);
+  }
+
   card.append(content, actions);
 
   const replyForm = createReplyForm(event, displayName, onReply);
@@ -316,6 +324,13 @@ function createReplyForm(parentEvent, displayName, onReply) {
   label.className = 'reply-form-label';
   label.textContent = `Replying to ${displayName}`;
 
+  const subjectInput = document.createElement('input');
+  subjectInput.type = 'text';
+  subjectInput.className = 'reply-subject-input';
+  subjectInput.placeholder = 'Subject (optional)';
+  subjectInput.maxLength = 80;
+  subjectInput.value = adornReplySubject(getSubject(parentEvent));
+
   const textarea = document.createElement('textarea');
   textarea.rows = 3;
   textarea.placeholder = 'Write your reply…';
@@ -334,7 +349,7 @@ function createReplyForm(parentEvent, displayName, onReply) {
   resultMsg.className = 'result-msg';
 
   formActions.append(submitBtn, cancelBtn, resultMsg);
-  form.append(label, textarea, formActions);
+  form.append(label, subjectInput, textarea, formActions);
 
   cancelBtn.addEventListener('click', () => {
     form.hidden = true;
@@ -351,7 +366,7 @@ function createReplyForm(parentEvent, displayName, onReply) {
     resultMsg.className = 'result-msg';
 
     try {
-      await onReply(parentEvent, content);
+      await onReply(parentEvent, content, subjectInput.value.trim());
       textarea.value = '';
       form.hidden = true;
       resultMsg.textContent = '';
@@ -457,7 +472,15 @@ export function renderReply(event, slice) {
   content.className = 'event-content';
   content.appendChild(renderMentionContent(event.content, event.tags, profiles));
 
-  card.append(meta, content);
+  const subject = getSubject(event);
+  if (subject) {
+    const subjectEl = document.createElement('div');
+    subjectEl.className = 'event-subject';
+    subjectEl.textContent = subject;
+    card.append(meta, subjectEl, content);
+  } else {
+    card.append(meta, content);
+  }
   return card;
 }
 
