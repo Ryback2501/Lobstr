@@ -57,6 +57,7 @@ const followsStatus = document.getElementById('follows-status');
 const followsList = document.getElementById('follows-list');
 
 const postContent = document.getElementById('post-content');
+const postSubject = document.getElementById('post-subject');
 const charCount = document.getElementById('char-count');
 const postBtn = document.getElementById('post-btn');
 const postResult = document.getElementById('post-result');
@@ -770,11 +771,15 @@ postBtn.addEventListener('click', async () => {
   setPostResult(store.postDifficulty > 0 ? 'Mining proof of work…' : 'Publishing…', '');
 
   try {
-    const { content: transformedContent, tags: mentionTags } = buildMentionEvent(content);
-    const event = await createOwnEvent({ kind: 1, tags: mentionTags, content: transformedContent, difficulty: store.postDifficulty });
+    const subject = postSubject.value.trim();
+    const subjectTags = subject ? [['subject', subject]] : [];
+    const { content: transformedContent, tags: mentionTags } = buildMentionEvent(content, subjectTags.length);
+    const tags = [...subjectTags, ...mentionTags];
+    const event = await createOwnEvent({ kind: 1, tags, content: transformedContent, difficulty: store.postDifficulty });
     await publishToAll(event);
     store.addEvent(event);
     postContent.value = '';
+    postSubject.value = '';
     charCount.textContent = '0';
     setPostResult('Posted.', 'ok');
   } catch (err) {
@@ -1472,14 +1477,15 @@ function makeRenderCallbacks() {
       rerenderFeed();
       try { await publishFollowList(); } catch { /* ignore relay error */ }
     },
-    onReply: async (parentEvent, content) => {
+    onReply: async (parentEvent, content, subject) => {
       if (!store.signer) throw new Error('Generate or import a keypair first.');
       if (!isAnyConnected()) throw new Error('Connect to a relay first.');
+      const subjectTags = subject ? [['subject', subject]] : [];
       const replyTags = buildReplyTags(parentEvent, store.signer.pubkeyHex);
-      const { content: transformedContent, tags: mentionTags } = buildMentionEvent(content, replyTags.length);
+      const { content: transformedContent, tags: mentionTags } = buildMentionEvent(content, subjectTags.length + replyTags.length);
       const event = await createOwnEvent({
         kind: 1,
-        tags: [...replyTags, ...mentionTags],
+        tags: [...subjectTags, ...replyTags, ...mentionTags],
         content: transformedContent,
         difficulty: store.postDifficulty,
       });

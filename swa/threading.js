@@ -31,6 +31,15 @@ export function buildQuoteTag(quotedEvent, relayHint = '') {
   return ['q', quotedEvent.id, relayHint, quotedEvent.pubkey];
 }
 
+export function getSubject(event) {
+  return event.tags.find(t => t[0] === 'subject')?.[1] || '';
+}
+
+export function adornReplySubject(subject) {
+  if (!subject) return '';
+  return /^re:/i.test(subject) ? subject : `Re: ${subject}`;
+}
+
 export function buildMentionEvent(content, tagOffset = 0, eventIds = new Set()) {
   const mentionTags = [];
   const seen = new Map();
