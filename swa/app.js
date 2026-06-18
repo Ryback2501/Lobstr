@@ -187,7 +187,7 @@ for (const spec of SUPPORTED_SPECS) {
 // ── Sidebar section navigation ─────────────────────────────────────────────────
 
 const sidebar = document.getElementById('sidebar');
-const sidebarButtons = Array.from(sidebar.querySelectorAll('.sidebar-btn'));
+const sidebarButtons = Array.from(sidebar.querySelectorAll('.sidebar-btn[data-section]'));
 const contentSections = Array.from(document.querySelectorAll('main .section'));
 
 // Show one section group and mark its sidebar button active; hide the rest.
