@@ -4,7 +4,7 @@ import { store } from './store.js';
 import { LocalSigner, ExtensionSigner } from './signer.js';
 import { verifyIdentity } from './identityVerifier.js';
 import { VERSION } from './version.js';
-import { buildReplyTags, buildMentionEvent, buildQuoteTag } from './threading.js';
+import { buildReplyTags, buildMentionEvent, buildQuoteTag, threadRootId, isInThread } from './threading.js';
 import { fetchRelayInfo } from './relayInfo.js';
 import { RelayPool } from './relayPool.js';
 import { findAuthorizedDeletions } from './deletions.js';
@@ -72,6 +72,8 @@ const feedIdSearch = document.getElementById('feed-id-search');
 const feedIdSearchBtn = document.getElementById('feed-id-search-btn');
 const feedHeader = document.getElementById('feed-header');
 const feedFilters = document.getElementById('feed-filters');
+const threadBanner = document.getElementById('thread-banner');
+const threadBackBtn = document.getElementById('thread-back-btn');
 const tabFeed = document.getElementById('tab-feed');
 const tabFollowing = document.getElementById('tab-following');
 const tabMentions = document.getElementById('tab-mentions');
@@ -161,6 +163,8 @@ let sinceFilter = 0; // seconds offset from now; 0 = no filter
 let untilFilter = 0; // seconds offset from now; 0 = no filter
 let minPowFilter = 0; // minimum leading-zero-bit difficulty; 0 = no filter
 let feedActiveTab = 'feed'; // 'feed' | 'following' | 'mentions'
+let activeThreadRoot = null; // root event id when the feed is filtered to one thread
+let threadSubId = null; // subscription pulling the active thread's events
 const replySubscriptions = new Map(); // eventId → { subId, container }
 const replySubIdToContainer = new Map(); // subId → container element
 const replyEventIds = new Map(); // subId → Set<eventId> (dedup across relays)
@@ -287,7 +291,7 @@ store.on('events', () => {
 store.on('eventAdded', ({ event, insertIdx }) => {
   feedStatus.textContent = '';
   const card = renderEvent(event, makeStoreSlice(), makeRenderCallbacks());
-  applyPowFilterToCard(card);
+  applyFeedFiltersToCard(card);
   const ref = eventsList.children[insertIdx];
   eventsList.insertBefore(card, ref ?? null);
   while (eventsList.children.length > store.events.length) {
@@ -577,7 +581,7 @@ feedUntilSelect.addEventListener('change', () => {
 
 feedMinPowSelect.addEventListener('change', () => {
   minPowFilter = parseInt(feedMinPowSelect.value) || 0;
-  for (const card of eventsList.children) applyPowFilterToCard(card);
+  for (const card of eventsList.children) applyFeedFiltersToCard(card);
 });
 
 postDifficultySelect.value = String(store.postDifficulty);
@@ -598,6 +602,8 @@ tabFollowing.addEventListener('click', () => {
 });
 
 tabMentions.addEventListener('click', () => switchTab('mentions'));
+
+threadBackBtn.addEventListener('click', exitThread);
 
 feedIdSearchBtn.addEventListener('click', () => {
   const id = feedIdSearch.value.trim().toLowerCase();
@@ -846,6 +852,9 @@ function handleRelayStatus(url, status, wasAnyConnected) {
     clearTimeout(metadataDebounceTimer);
     idSearchSubId = null;
     mentionsSubId = null;
+    activeThreadRoot = null;
+    threadSubId = null;
+    threadBanner.hidden = true;
     pool.clearActiveSubs();
     subIdHandlers.clear();
     subIdEOSEHandlers.clear();
@@ -895,6 +904,9 @@ function setupSubscriptions() {
   attestationSubId = null;
   dmSubId = null;
   idSearchSubId = null;
+  activeThreadRoot = null;
+  threadSubId = null;
+  threadBanner.hidden = true;
 
   if (store.signer) {
     ownProfileSubId = crypto.randomUUID();
@@ -1299,8 +1311,15 @@ function closeRelayModal() {
 relayModalClose.addEventListener('click', closeRelayModal);
 relayInfoModal.addEventListener('click', (e) => { if (e.target === relayInfoModal) closeRelayModal(); });
 
-function applyPowFilterToCard(card) {
-  card.hidden = (parseInt(card.dataset.pow) || 0) < minPowFilter;
+function cardInActiveThread(card) {
+  if (!activeThreadRoot) return true;
+  const event = store.events.find(e => e.id === card.dataset.eventId);
+  return event ? isInThread(event, activeThreadRoot) : false;
+}
+
+function applyFeedFiltersToCard(card) {
+  const meetsPow = (parseInt(card.dataset.pow) || 0) >= minPowFilter;
+  card.hidden = !meetsPow || !cardInActiveThread(card);
 }
 
 function rerenderFeed() {
@@ -1308,9 +1327,36 @@ function rerenderFeed() {
   eventsList.innerHTML = '';
   for (const event of store.events) {
     const card = renderEvent(event, makeStoreSlice(), makeRenderCallbacks());
-    applyPowFilterToCard(card);
+    applyFeedFiltersToCard(card);
     eventsList.appendChild(card);
   }
+}
+
+// Filter the feed down to a single thread. The feed keeps every card in the
+// DOM; entering a thread just hides the cards that don't belong to it, mirroring
+// the proof-of-work filter. A subscription pulls in thread events not yet loaded.
+function enterThread(rootId) {
+  activeThreadRoot = rootId;
+  threadBanner.hidden = false;
+  for (const card of eventsList.children) applyFeedFiltersToCard(card);
+  fetchThread(rootId);
+}
+
+function exitThread() {
+  if (!activeThreadRoot) return;
+  activeThreadRoot = null;
+  threadBanner.hidden = true;
+  if (threadSubId) { unsubscribeAll(threadSubId); threadSubId = null; }
+  for (const card of eventsList.children) applyFeedFiltersToCard(card);
+}
+
+function fetchThread(rootId) {
+  if (!isAnyConnected()) return;
+  if (threadSubId) unsubscribeAll(threadSubId);
+  threadSubId = crypto.randomUUID();
+  subIdHandlers.set(threadSubId, (event) => store.addEvent(event));
+  subIdClosedHandlers.set(threadSubId, (url, msg) => showSubClosedNotice(url, 'thread', msg));
+  subscribeAll(threadSubId, [{ ids: [rootId] }, { kinds: [1], '#e': [rootId], limit: 100 }]);
 }
 
 function updateCardsForPubkey(pubkey) {
@@ -1322,7 +1368,7 @@ function updateCardsForPubkey(pubkey) {
       const event = store.events.find(e => e.id === eventId) || store.mentions.find(e => e.id === eventId);
       if (event && event.pubkey === pubkey) {
         const newCard = renderEvent(event, slice, callbacks);
-        if (list === eventsList) applyPowFilterToCard(newCard);
+        if (list === eventsList) applyFeedFiltersToCard(newCard);
         oldCard.replaceWith(newCard);
       }
     }
@@ -1330,6 +1376,7 @@ function updateCardsForPubkey(pubkey) {
 }
 
 function switchTab(tab) {
+  exitThread();
   feedActiveTab = tab;
   tabFeed.classList.toggle('active', tab === 'feed');
   tabFollowing.classList.toggle('active', tab === 'following');
@@ -1476,6 +1523,10 @@ function makeRenderCallbacks() {
       store.addFollow({ pubkey, relay: '', petname: '' });
       rerenderFeed();
       try { await publishFollowList(); } catch { /* ignore relay error */ }
+    },
+    onViewThread: (event) => {
+      if (feedActiveTab !== 'feed' && feedActiveTab !== 'following') switchTab('feed');
+      enterThread(threadRootId(event));
     },
     onReply: async (parentEvent, content, subject) => {
       if (!store.signer) throw new Error('Generate or import a keypair first.');
