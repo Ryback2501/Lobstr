@@ -90,6 +90,30 @@
     </div>
   </div>
 
+  <div id="post-modal" class="modal-overlay" hidden>
+    <div class="modal post-modal-card" role="dialog" aria-modal="true" aria-labelledby="post-modal-title">
+      <button id="post-modal-close" class="modal-close" aria-label="Close">&times;</button>
+      <h2 id="post-modal-title">Post</h2>
+      <div class="field-group">
+        <input id="post-subject" type="text" placeholder="Subject (optional)" maxlength="80" autocomplete="off">
+        <textarea id="post-content" rows="4" placeholder="What's on your mind?" maxlength="2000"></textarea>
+        <div class="char-counter"><span id="char-count">0</span> / 2000</div>
+      </div>
+      <div class="btn-row">
+        <button id="post-btn" class="primary">Post</button>
+        <label class="pow-field">Proof of work
+          <select id="post-difficulty">
+            <option value="0">Off</option>
+            <option value="8">8 bits</option>
+            <option value="16">16 bits</option>
+            <option value="20">20 bits</option>
+          </select>
+        </label>
+        <span id="post-result" class="result-msg"></span>
+      </div>
+    </div>
+  </div>
+
   <div class="app-shell">
   <nav id="sidebar" class="sidebar" aria-label="Sections" hidden>
     <button type="button" class="sidebar-btn active" data-section="user" aria-label="User" title="User">
@@ -240,27 +264,6 @@
     </div>
 
     <div class="section" data-section="feeds" hidden>
-    <section id="post-panel" class="panel">
-      <h2>Post</h2>
-      <div class="field-group">
-        <input id="post-subject" type="text" placeholder="Subject (optional)" maxlength="80" autocomplete="off">
-        <textarea id="post-content" rows="4" placeholder="What's on your mind?" maxlength="2000"></textarea>
-        <div class="char-counter"><span id="char-count">0</span> / 2000</div>
-      </div>
-      <div class="btn-row">
-        <button id="post-btn" class="primary">Post</button>
-        <label class="pow-field">Proof of work
-          <select id="post-difficulty">
-            <option value="0">Off</option>
-            <option value="8">8 bits</option>
-            <option value="16">16 bits</option>
-            <option value="20">20 bits</option>
-          </select>
-        </label>
-        <span id="post-result" class="result-msg"></span>
-      </div>
-    </section>
-
     <section id="feed-panel" class="panel">
       <h2>Feed</h2>
       <div id="feed-header" class="feed-header" hidden>
@@ -301,6 +304,7 @@
       <div id="mentions-status" class="feed-status" hidden>No mentions yet.</div>
       <div id="mentions-list" hidden></div>
     </section>
+    <button id="open-post-btn" class="post-fab" aria-haspopup="dialog">✎ Post</button>
     </div>
   </main>
   </div>

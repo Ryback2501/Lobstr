@@ -109,6 +109,10 @@ const generateMnemonic12Btn = document.getElementById('generate-mnemonic-12-btn'
 const generateMnemonic24Btn = document.getElementById('generate-mnemonic-24-btn');
 const generateError = document.getElementById('generate-error');
 
+const postModal = document.getElementById('post-modal');
+const openPostBtn = document.getElementById('open-post-btn');
+const postModalClose = document.getElementById('post-modal-close');
+
 const infoBtn = document.getElementById('info-btn');
 const infoModal = document.getElementById('info-modal');
 const modalCloseBtn = document.getElementById('modal-close-btn');
@@ -214,12 +218,20 @@ for (const button of sidebarButtons) {
   button.addEventListener('click', () => showSection(button.dataset.section));
 }
 
+openPostBtn.addEventListener('click', () => {
+  postModal.hidden = false;
+  postContent.focus();
+});
+postModalClose.addEventListener('click', () => { postModal.hidden = true; });
+postModal.addEventListener('click', (e) => { if (e.target === postModal) postModal.hidden = true; });
+
 infoBtn.addEventListener('click', () => { infoModal.hidden = false; });
 modalCloseBtn.addEventListener('click', () => { infoModal.hidden = true; });
 infoModal.addEventListener('click', (e) => { if (e.target === infoModal) infoModal.hidden = true; });
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     infoModal.hidden = true;
+    postModal.hidden = true;
     if (!relayInfoModal.hidden) closeRelayModal();
   }
 });
@@ -788,6 +800,7 @@ postBtn.addEventListener('click', async () => {
     postSubject.value = '';
     charCount.textContent = '0';
     setPostResult('Posted.', 'ok');
+    postModal.hidden = true;
   } catch (err) {
     setPostResult(err.message, 'err');
   } finally {
