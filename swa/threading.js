@@ -27,6 +27,23 @@ export function buildReplyTags(parentEvent, myPubkey) {
   return tags;
 }
 
+// Identify the root post of the thread an event belongs to. A post with no
+// referenced events roots its own thread. Otherwise prefer the explicit root
+// marker; fall back to the first referenced event for deprecated positional
+// tags, where the earliest reference is the thread root.
+export function threadRootId(event) {
+  const eTags = event.tags.filter(t => t[0] === 'e');
+  if (eTags.length === 0) return event.id;
+  const rootTag = eTags.find(t => t[3] === 'root');
+  return rootTag ? rootTag[1] : eTags[0][1];
+}
+
+// Whether an event belongs to the thread rooted at rootId — either it is the
+// root itself or it descends from it.
+export function isInThread(event, rootId) {
+  return event.id === rootId || threadRootId(event) === rootId;
+}
+
 export function buildQuoteTag(quotedEvent, relayHint = '') {
   return ['q', quotedEvent.id, relayHint, quotedEvent.pubkey];
 }

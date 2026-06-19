@@ -166,7 +166,7 @@ export function createQuotePlaceholder(quotedId) {
 
 export function renderEvent(event, slice, callbacks) {
   const { signer, profiles, verifiedIdentities, attestations, followedPubkeys, events, quotedEvents } = slice;
-  const { onFollow, onReply, onShowReplies, onDelete, onScrollToParent, onQuote, onQuoteSeen } = callbacks;
+  const { onFollow, onReply, onShowReplies, onDelete, onScrollToParent, onQuote, onQuoteSeen, onViewThread } = callbacks;
 
   const card = document.createElement('div');
   card.className = 'event-card';
@@ -257,7 +257,11 @@ export function renderEvent(event, slice, callbacks) {
   quoteBtn.className = 'btn-reply';
   quoteBtn.textContent = 'Quote';
 
-  actions.append(replyBtn, showRepliesBtn, quoteBtn);
+  const viewThreadBtn = document.createElement('button');
+  viewThreadBtn.className = 'btn-reply';
+  viewThreadBtn.textContent = 'View thread';
+
+  actions.append(replyBtn, showRepliesBtn, quoteBtn, viewThreadBtn);
 
   if (isOwnEvent(event, signer?.pubkeyHex)) {
     const deleteBtn = document.createElement('button');
@@ -311,6 +315,12 @@ export function renderEvent(event, slice, callbacks) {
   showRepliesBtn.addEventListener('click', () => {
     onShowReplies(event, repliesContainer, showRepliesBtn);
   });
+
+  if (onViewThread) {
+    viewThreadBtn.addEventListener('click', () => onViewThread(event));
+  } else {
+    viewThreadBtn.hidden = true;
+  }
 
   return card;
 }

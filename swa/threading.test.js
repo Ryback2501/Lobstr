@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveReplyTag, buildReplyTags, buildMentionEvent, buildQuoteTag, getSubject, adornReplySubject } from './threading.js';
+import { resolveReplyTag, buildReplyTags, buildMentionEvent, buildQuoteTag, getSubject, adornReplySubject, threadRootId, isInThread } from './threading.js';
 
 const HEX_A = 'a'.repeat(64);
 const HEX_B = 'b'.repeat(64);
@@ -230,4 +230,53 @@ test('adornReplySubject: leaves an already-prefixed subject unchanged', () => {
 
 test('adornReplySubject: treats the prefix case-insensitively', () => {
   assert.equal(adornReplySubject('RE: Lunch plans'), 'RE: Lunch plans');
+});
+
+// ── threadRootId ─────────────────────────────────────────────────────────────
+
+test('threadRootId: a top-level post (no e tags) roots its own thread', () => {
+  const event = { id: HEX_A, tags: [['p', HEX_B]] };
+  assert.equal(threadRootId(event), HEX_A);
+});
+
+test('threadRootId: uses the root-marked e tag when present', () => {
+  const event = { id: HEX_C, tags: [['e', HEX_A, '', 'root'], ['e', HEX_B, '', 'reply']] };
+  assert.equal(threadRootId(event), HEX_A);
+});
+
+test('threadRootId: a direct reply marked only root uses that root', () => {
+  const event = { id: HEX_C, tags: [['e', HEX_A, '', 'root']] };
+  assert.equal(threadRootId(event), HEX_A);
+});
+
+test('threadRootId: deprecated positional tags use the first e tag as root', () => {
+  const event = { id: HEX_C, tags: [['e', HEX_A], ['e', HEX_B]] };
+  assert.equal(threadRootId(event), HEX_A);
+});
+
+test('threadRootId: a single positional e tag is both root and reply', () => {
+  const event = { id: HEX_B, tags: [['e', HEX_A]] };
+  assert.equal(threadRootId(event), HEX_A);
+});
+
+// ── isInThread ───────────────────────────────────────────────────────────────
+
+test('isInThread: the root event itself belongs to its thread', () => {
+  const root = { id: HEX_A, tags: [] };
+  assert.equal(isInThread(root, HEX_A), true);
+});
+
+test('isInThread: a reply rooted at the thread belongs to it', () => {
+  const reply = { id: HEX_C, tags: [['e', HEX_A, '', 'root'], ['e', HEX_B, '', 'reply']] };
+  assert.equal(isInThread(reply, HEX_A), true);
+});
+
+test('isInThread: an event from another thread is excluded', () => {
+  const other = { id: HEX_C, tags: [['e', HEX_B, '', 'root']] };
+  assert.equal(isInThread(other, HEX_A), false);
+});
+
+test('isInThread: an unrelated top-level post is excluded', () => {
+  const post = { id: HEX_B, tags: [] };
+  assert.equal(isInThread(post, HEX_A), false);
 });
